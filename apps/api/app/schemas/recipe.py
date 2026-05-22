@@ -60,6 +60,9 @@ class RecipeListItem(BaseModel):
     image_url: str
     estimated_cost_krw: int
     time_minutes: int
+    rating: int = 0
+    is_selling: bool = False
+    rejection_reason: str = ""
 
 
 class RecipeDetailOut(BaseModel):
@@ -87,7 +90,15 @@ class RecipeDetailOut(BaseModel):
     is_recommended: bool
     rating: int
     is_selling: bool
+    rejection_reason: str = ""
     source_document: dict | None = None
+
+
+class RecipeUpdateRequest(BaseModel):
+    """Owner-editable fields on an existing recipe (star rating, sale toggle)."""
+
+    rating: int | None = Field(default=None, ge=0, le=5)
+    is_selling: bool | None = None
 
 
 class RecipeStatusUpdate(BaseModel):

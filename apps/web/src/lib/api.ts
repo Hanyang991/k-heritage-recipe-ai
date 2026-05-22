@@ -96,6 +96,9 @@ export interface RecipeListItem {
   image_url: string;
   estimated_cost_krw: number;
   time_minutes: number;
+  rating: number;
+  is_selling: boolean;
+  rejection_reason: string;
 }
 
 export interface RecipeStep {
@@ -133,6 +136,7 @@ export interface RecipeDetail {
   is_recommended: boolean;
   rating: number;
   is_selling: boolean;
+  rejection_reason: string;
 }
 
 export interface GenerateResponse {
@@ -233,6 +237,14 @@ export const api = {
     }),
   listMyRecipes: () => request<RecipeListItem[]>("/private/recipes"),
   getRecipe: (id: string) => request<RecipeDetail>(`/private/recipes/${id}`),
+  updateRecipe: (
+    id: string,
+    payload: { rating?: number; is_selling?: boolean }
+  ) =>
+    request<RecipeDetail>(`/private/recipes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   deleteRecipe: (id: string) =>
     request<void>(`/private/recipes/${id}`, { method: "DELETE" }),
   recipePdfUrl: (id: string) => `/v1/private/recipes/${id}/export/pdf`,

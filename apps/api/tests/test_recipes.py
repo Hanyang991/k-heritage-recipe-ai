@@ -107,6 +107,87 @@ def test_pdf_export_returns_pdf(client: TestClient) -> None:
     assert r.content[:4] == b"%PDF"
 
 
+def test_update_recipe_rating_and_is_selling(client: TestClient) -> None:
+    token = _register(client, "rate@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    gen = client.post(
+        "/v1/private/recipes/generate",
+        headers=headers,
+        json={
+            "keyword": "오미자에이드",
+            "region": "제주",
+            "diet": "제한 없음",
+            "menu_type": "디저트 음료",
+        },
+    ).json()
+    recipe_id = gen["candidates"][0]["id"]
+
+    r = client.patch(
+        f"/v1/private/recipes/{recipe_id}",
+        headers=headers,
+        json={"rating": 4, "is_selling": True},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["rating"] == 4
+    assert body["is_selling"] is True
+
+    # Partial update — only flip is_selling, rating unchanged
+    r2 = client.patch(
+        f"/v1/private/recipes/{recipe_id}",
+        headers=headers,
+        json={"is_selling": False},
+    )
+    assert r2.status_code == 200
+    assert r2.json()["rating"] == 4
+    assert r2.json()["is_selling"] is False
+
+
+def test_update_recipe_rejects_out_of_range_rating(client: TestClient) -> None:
+    token = _register(client, "rate-bad@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    gen = client.post(
+        "/v1/private/recipes/generate",
+        headers=headers,
+        json={
+            "keyword": "쑥라떼",
+            "region": "전라북도",
+            "diet": "비건",
+            "menu_type": "디저트 음료",
+        },
+    ).json()
+    recipe_id = gen["candidates"][0]["id"]
+    r = client.patch(
+        f"/v1/private/recipes/{recipe_id}",
+        headers=headers,
+        json={"rating": 9},
+    )
+    assert r.status_code == 422
+
+
+def test_update_recipe_requires_ownership(client: TestClient) -> None:
+    owner_token = _register(client, "owner@example.com")
+    gen = client.post(
+        "/v1/private/recipes/generate",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "keyword": "오미자에이드",
+            "region": "제주",
+            "diet": "제한 없음",
+            "menu_type": "디저트 음료",
+        },
+    ).json()
+    recipe_id = gen["candidates"][0]["id"]
+
+    other_token = _register(client, "intruder@example.com")
+    r = client.patch(
+        f"/v1/private/recipes/{recipe_id}",
+        headers={"Authorization": f"Bearer {other_token}"},
+        json={"rating": 1},
+    )
+    assert r.status_code == 404
+
+
 def test_certificate_blocked_on_free_plan(client: TestClient) -> None:
     token = _register(client, "cert@example.com")
     headers = {"Authorization": f"Bearer {token}"}

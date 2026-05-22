@@ -22,6 +22,7 @@ from app.schemas.recipe import (
     RecipeGenerateResponse,
     RecipeListItem,
     RecipeStep,
+    RecipeUpdateRequest,
 )
 from app.services.heritage import get_heritage_adapter
 from app.services.llm import get_llm_adapter
@@ -173,6 +174,24 @@ def get_recipe(
     return _to_detail(recipe)
 
 
+@router.patch("/{recipe_id}", response_model=RecipeDetailOut)
+def update_recipe(
+    recipe_id: str,
+    payload: RecipeUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RecipeDetailOut:
+    """Owner-only patch for star rating + sale toggle (spec 8.2.4)."""
+    recipe = _get_owned_recipe(db, recipe_id, current_user)
+    if payload.rating is not None:
+        recipe.rating = payload.rating
+    if payload.is_selling is not None:
+        recipe.is_selling = payload.is_selling
+    db.commit()
+    db.refresh(recipe)
+    return _to_detail(recipe)
+
+
 @router.delete("/{recipe_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_recipe(
     recipe_id: str,
@@ -290,5 +309,6 @@ def _to_detail(recipe: Recipe) -> RecipeDetailOut:
         is_recommended=recipe.is_recommended,
         rating=recipe.rating,
         is_selling=recipe.is_selling,
+        rejection_reason=recipe.rejection_reason,
         source_document=None,
     )

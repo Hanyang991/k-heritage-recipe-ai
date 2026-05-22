@@ -46,8 +46,22 @@ def update_recipe_status(
                 "status": 404,
             },
         )
+    if payload.status == RecipeStatus.REJECTED and not payload.rejection_reason.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "REJECTION_REASON_REQUIRED",
+                "message": "Rejection requires a non-empty reason for user feedback.",
+                "status": 400,
+            },
+        )
     recipe.status = payload.status
-    recipe.rejection_reason = payload.rejection_reason or ""
+    # Keep the existing reason on non-rejection transitions so admins can
+    # demote / re-flag without wiping the previously recorded reason.
+    if payload.status == RecipeStatus.REJECTED:
+        recipe.rejection_reason = payload.rejection_reason.strip()
+    elif payload.rejection_reason:
+        recipe.rejection_reason = payload.rejection_reason.strip()
     db.commit()
     db.refresh(recipe)
     return RecipeListItem.model_validate(recipe)

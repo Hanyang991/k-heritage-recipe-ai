@@ -1,0 +1,215 @@
+# K-Heritage Recipe AI — TODO
+
+기술 명세서 (`k-heritage-recipe-ai-tech-spec-v1_4.docx`) 기준 구현 현황과 백로그.
+체크박스는 머지된 코드 기준입니다. 새 항목을 추가하실 때는 `[ ]` 로 두시면 됩니다.
+
+---
+
+## 1. 백엔드 (`apps/api/` — FastAPI)
+
+### 1.1 인증 & 사용자 (Spec §6, §8.2)
+- [x] 회원가입 / 로그인 / refresh / me 엔드포인트
+- [x] JWT access + refresh 토큰
+- [x] bcrypt cost-12 패스워드 해싱
+- [x] `UserRole` (user / admin)
+- [ ] 이메일 인증 (가입 후 verification token, §6.2)
+- [ ] 2FA TOTP (§6.2)
+- [ ] 패스워드 재설정 플로우 (forgot-password / reset-password)
+- [ ] 소셜 로그인 (Google / Kakao) — Spec 옵션
+- [ ] 계정 삭제 API (GDPR / 개인정보보호법, §13)
+- [ ] 사용자 프로필 편집 (display_name, region preferences)
+
+### 1.2 트렌드 (§5, §8.2.2)
+- [x] 지역별 인기 키워드 조회
+- [x] 시드 데이터 (지역 × 키워드)
+- [ ] 실제 트렌드 수집 잡 (네이버 데이터랩 / 구글 트렌드 / 인스타 해시태그)
+- [ ] 트렌드 키워드 시간순 그래프 데이터
+- [ ] 사용자별 즐겨찾는 키워드 / 알림
+
+### 1.3 고문헌 (§5, §7, §8.2.3)
+- [x] 키워드 + 기관 필터 검색 (`GET /v1/documents`)
+- [x] 시드 문서 (장서각 / 국립민속박물관 / 문화데이터광장 샘플)
+- [ ] **장서각 API 실연동** (`HERITAGE_PROVIDER=live`, `JANGSEOGAK_API_KEY`)
+- [ ] **국립민속박물관 API 실연동** (`NFM_API_KEY`)
+- [ ] **문화데이터광장 API 실연동** (`CULTURE_API_KEY`)
+- [ ] **Vertex AI Vector Search** 임베딩 + 인덱싱 파이프라인
+- [ ] 문서 상세 페이지 API (원문, 번역, 메타데이터)
+- [ ] 라이선스 / 저작권 표기 강화 (§13)
+
+### 1.4 레시피 (§5, §8.2.4)
+- [x] 생성 (3 후보, mock LLM, 결정론적 시드)
+- [x] 목록 / 상세 / 삭제
+- [x] PDF 다운로드 (`reportlab`, 무료=워터마크 / Pro=plain)
+- [x] 고증 인증서 (Pro+ 한정, 402 on free)
+- [x] DB 저장 + 상태(draft / pending_review / approved / rejected / flagged)
+- [x] `source_attribution` 자동 첨부
+- [x] 별점 / 판매중 토글 저장 (PATCH `/v1/private/recipes/{id}` + 프론트 위젯)
+- [ ] **실 Gemini 2.5 Pro API 연동** (`LLM_PROVIDER=live`, `GEMINI_API_KEY`)
+- [ ] 관련 레시피 추천 (벡터 유사도 또는 태그 기반)
+- [ ] 재료 / 단계 사용자 편집
+- [ ] 비용 분석 더 세분화 (재료비 / 소모품 / 인건비)
+- [ ] 식약처 식품안전 키워드 필터 (금지 재료, §13)
+- [ ] 알러지 / 식이제한 검증 (재료 vs `diet` 옵션 매칭)
+
+### 1.5 구독 & 결제 (§5, §8.2.5, §12)
+- [x] Free / Pro / B2B 3-tier 모델
+- [x] Free 플랜 월 3건 쿼터 + 429 응답
+- [x] 플랜 변경 mock 엔드포인트
+- [x] TossPayments 빌링키 mock 어댑터
+- [ ] **TossPayments 실연동** (`PAYMENTS_PROVIDER=live`, `TOSS_SECRET_KEY`)
+- [ ] 빌링키 발급 콜백 (clientKey + customerKey 흐름)
+- [ ] 정기결제 잡 (cron / Celery / Cloud Scheduler)
+- [ ] 결제 실패 retry 로직 (`retry_count`, exponential backoff)
+- [ ] 환불 / 구독 취소 API
+- [ ] 영수증 / 세금계산서 발행 (B2B)
+- [ ] 사용량 미터링 + 청구 (B2B per-seat / per-API-call)
+
+### 1.6 관리자 (§5, §8.2.6, FR-07)
+- [x] 검수 큐 (pending / approved / rejected / flagged 필터)
+- [x] 상태 변경 API
+- [x] 거부 사유 입력 (반려 시 필수) + 사용자 상세 화면에 노출
+- [ ] 일괄 승인 / 거부
+- [ ] 통계 대시보드 (일별 생성량, 승인율, 인기 키워드)
+- [ ] 사용자 관리 (BAN / 강등)
+- [ ] 감사 로그 (admin action 추적, §13)
+
+### 1.7 인프라 / 운영
+- [x] SQLAlchemy 2.x + Alembic migrations
+- [x] SQLite(dev/test) / Postgres(compose)
+- [x] 어댑터 패턴 (LLM / Heritage / Payments)
+- [x] 17개 pytest 통과 (별점/판매 토글 + 반려 사유 케이스 포함)
+- [x] ruff lint + format check
+- [ ] **Redis 캐싱** (현재 compose에만 떠있고 코드에서 미사용) — 트렌드 / 문서 검색 캐시
+- [ ] 백그라운드 잡 큐 (Celery / RQ / Cloud Tasks)
+- [ ] 구조화 로깅 (JSON, request_id correlation)
+- [ ] OpenTelemetry 트레이싱
+- [ ] Sentry / 에러 트래킹
+- [ ] Rate limit 미들웨어 (`free_plan_hourly_rate_limit` 설정값만 있고 미적용)
+- [ ] 헬스체크 / readiness 엔드포인트
+- [ ] DB 마이그레이션 자동 적용 (현재 시드만)
+
+---
+
+## 2. 프론트엔드 (`apps/web/` — React + Vite + Tailwind v4 + shadcn)
+
+### 2.1 페이지
+- [x] `/login` — 로그인 / 회원가입 + 데모 계정 안내
+- [x] `/dashboard` — 트렌드 카드 + 최근 레시피
+- [x] `/generate` step1 — 키워드 / 지역 / 식이 / 메뉴 타입 선택
+- [x] `/generate/step2` — 고문헌 매칭 + 선택
+- [x] `/generate/result` — 3개 후보 + 추천 표시
+- [x] `/recipes` — 내 레시피 목록 + 삭제
+- [x] `/recipes/:id` — 상세 + PDF / 인증서 다운로드 + SNS 문구 복사
+- [x] `/documents` — 키워드 + 기관 검색
+- [x] `/subscription` — 3개 플랜 카드 + 현재 플랜
+- [x] `/admin` — 검수 큐 (관리자 전용)
+- [ ] **`/onboarding`** — 가입 직후 사용자 페르소나 / 선호 지역 설정 (§8.2.1)
+- [ ] `/profile` — 사용자 정보 / 비밀번호 변경
+- [ ] `/recipes/:id/edit` — 레시피 직접 편집
+- [ ] `/documents/:id` — 고문헌 상세
+- [ ] `/billing/history` — 결제 내역
+
+### 2.2 인증 & 라우팅
+- [x] `AuthContext` + `useAuth()`
+- [x] `ProtectedRoute` (auth + admin 가드)
+- [x] JWT localStorage 저장 (`kh.access_token`, `kh.refresh_token`)
+- [x] 사이드바 인증 / 역할별 메뉴
+- [ ] Refresh token 자동 갱신 (현재는 401시 로그아웃)
+- [ ] 비로그인 사용자 랜딩 페이지
+
+### 2.3 API 클라이언트 (`src/lib/api.ts`)
+- [x] 타입드 endpoint wrapper 전부
+- [x] 자동 Authorization 헤더 주입
+- [x] 401 / 402 / 429 핸들링
+- [ ] React Query 도입 (현재 useEffect + setState 패턴) — 캐싱 / 리페치 / optimistic update
+- [ ] 글로벌 에러 토스트 인터셉터
+
+### 2.4 UI / UX
+- [x] shadcn/ui 컴포넌트 라이브러리
+- [x] Tailwind v4 + 디자인 토큰
+- [x] 한글 폰트 (Pretendard / Noto Sans KR)
+- [ ] 다크 모드 토글 (`next-themes` 이미 설치됨)
+- [ ] 반응형 모바일 대응
+- [ ] i18n (ko / en 동시 지원)
+- [ ] 로딩 스켈레톤 통일
+- [ ] 에러 바운더리
+
+---
+
+## 3. 인프라 / DevOps
+
+- [x] `docker-compose.yml` (postgres + redis + api + web)
+- [x] API / Web Dockerfile
+- [x] GitHub Actions CI (ruff / pytest / tsc / vite build)
+- [x] Devin 환경 blueprint
+- [x] `.gitignore`, `README.md`, `tsconfig.json`
+- [ ] **GCP Cloud Run 배포** (api + web)
+- [ ] **Cloud SQL Postgres** 프로비저닝
+- [ ] **Vertex AI Vector Search** 인덱스
+- [ ] **Cloud Storage** (PDF / 이미지 캐시)
+- [ ] **Cloud Scheduler** (트렌드 수집, 정기결제)
+- [ ] Terraform / Pulumi IaC
+- [ ] 스테이징 / 프로덕션 환경 분리
+- [ ] CI에서 docker-compose smoke test
+- [ ] 시크릿 관리 (Secret Manager / Doppler)
+- [ ] 도메인 / TLS / CDN
+
+---
+
+## 4. 테스트
+
+- [x] 백엔드 단위 / 통합 테스트 13개 (auth / recipes / admin / trends / quotas / PDF)
+- [ ] **프론트엔드 단위 테스트** (Vitest + React Testing Library)
+- [ ] **E2E 테스트** (Playwright) — 핵심 사용자 플로우
+  - [ ] 회원가입 → 로그인 → 레시피 생성 → PDF 다운로드
+  - [ ] 관리자 로그인 → 검수 큐 → 승인
+  - [ ] Free 쿼터 초과 → 구독 페이지 리다이렉트
+- [ ] 부하 테스트 (k6 / Locust) — 생성 동시성, 쿼터 정합성
+- [ ] 보안 점검 (OWASP top 10, JWT 시크릿, SQL 인젝션 회귀)
+
+---
+
+## 5. 컴플라이언스 / 법무 (§13)
+
+- [ ] 개인정보 처리방침 페이지
+- [ ] 이용약관 페이지
+- [ ] 가입 시 약관 동의 체크박스
+- [ ] 쿠키 배너 (KISA / GDPR)
+- [ ] 데이터 보관 / 삭제 정책 (DB 마이그레이션 포함)
+- [ ] 사업자 정보 / 통신판매업 신고
+- [ ] 고문헌 출처 표기 자동화 (현재 텍스트만, 라이선스별 분기 필요)
+
+---
+
+## 6. 보류 (실 키 / 의사결정 대기)
+
+| 항목 | 차단 사유 | 어댑터 준비 |
+|---|---|---|
+| Gemini 2.5 Pro 호출 | `GEMINI_API_KEY` 필요 | ✅ (`LLMAdapter`, `NotImplementedError`) |
+| 장서각 API | API 키 + 발급 절차 | ✅ |
+| 국립민속박물관 API | API 키 | ✅ |
+| 문화데이터광장 API | API 키 | ✅ |
+| TossPayments | `TOSS_SECRET_KEY` + `TOSS_CLIENT_KEY` + 가맹점 등록 | ✅ |
+| Vertex AI Vector Search | GCP 프로젝트 + 결제 활성화 | ⏸ (스켈레톤만) |
+| 이메일 발송 (SendGrid / Resend) | 도메인 + DKIM 설정 | ❌ (아직 시작 안 함) |
+
+---
+
+## 7. 우선순위 제안
+
+**Now (다음 스프린트)**
+1. ~~별점 / 판매중 토글 백엔드 저장~~ ✅ (PR: rating + rejection)
+2. ~~관리자 거부 사유 입력 + 사용자 알림~~ ✅ (PR: rating + rejection)
+3. Refresh token 자동 갱신
+4. 온보딩 페이지
+
+**Next (실 키 받으면)**
+1. Gemini 실연동
+2. 장서각 / 국립민속박물관 / 문화데이터광장 크롤러
+3. TossPayments 정기결제
+
+**Later (스케일링)**
+1. Vertex Vector Search
+2. Cloud Run 배포
+3. 부하 테스트 / 모니터링
+4. i18n

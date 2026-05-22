@@ -8,8 +8,10 @@ import {
   Share2,
   Copy,
   Download,
+  Star,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { Switch } from "./ui/switch";
 import { toast } from "sonner";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { api, getToken, RecipeDetail as RecipeDetailType } from "@/lib/api";
@@ -94,6 +96,34 @@ export function RecipeDetail() {
     toast.success("레시피 링크가 복사되었습니다");
   };
 
+  const handleRating = async (rating: number) => {
+    if (!recipe) return;
+    const previous = recipe.rating;
+    setRecipe({ ...recipe, rating });
+    try {
+      const updated = await api.updateRecipe(recipe.id, { rating });
+      setRecipe(updated);
+      toast.success(`별점 ${rating}점이 저장되었습니다`);
+    } catch (e) {
+      setRecipe({ ...recipe, rating: previous });
+      toast.error(e instanceof Error ? e.message : "별점 저장 실패");
+    }
+  };
+
+  const handleSellingToggle = async (next: boolean) => {
+    if (!recipe) return;
+    const previous = recipe.is_selling;
+    setRecipe({ ...recipe, is_selling: next });
+    try {
+      const updated = await api.updateRecipe(recipe.id, { is_selling: next });
+      setRecipe(updated);
+      toast.success(next ? "판매 시작으로 표시되었습니다" : "판매 중지로 변경되었습니다");
+    } catch (e) {
+      setRecipe({ ...recipe, is_selling: previous });
+      toast.error(e instanceof Error ? e.message : "판매 상태 변경 실패");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-[#4B5563]">
@@ -170,6 +200,17 @@ export function RecipeDetail() {
                 {recipe.source_attribution || "출처 정보가 없습니다."}
               </p>
             </div>
+
+            {recipe.status === "rejected" && recipe.rejection_reason && (
+              <div className="bg-[#FEE2E2] border-l-4 border-[#DC2626] rounded-lg p-6">
+                <h3 className="font-semibold text-[#991B1B] mb-2 flex items-center gap-2">
+                  ⚠ 검수 반려 사유
+                </h3>
+                <p className="text-sm text-[#7F1D1D] whitespace-pre-line">
+                  {recipe.rejection_reason}
+                </p>
+              </div>
+            )}
 
             <div className="bg-white rounded-xl border border-[#E5E7EB] p-6">
               <h2 className="text-lg font-semibold text-[#111827] mb-4">레시피 설명</h2>
@@ -320,6 +361,58 @@ export function RecipeDetail() {
                 <Share2 className="w-4 h-4 mr-2" />
                 공유하기
               </Button>
+
+              <div className="pt-4 mt-2 border-t border-[#E5E7EB] space-y-4">
+                <div>
+                  <p className="text-sm font-semibold text-[#111827] mb-2">
+                    이 레시피가 도움이 됐나요?
+                  </p>
+                  <div
+                    className="flex items-center gap-1"
+                    role="radiogroup"
+                    aria-label="별점"
+                  >
+                    {[1, 2, 3, 4, 5].map((star) => {
+                      const active = star <= recipe.rating;
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          aria-label={`별점 ${star}점`}
+                          onClick={() => handleRating(star)}
+                          className="p-1 rounded hover:bg-[#FEF3C7] transition-colors"
+                        >
+                          <Star
+                            className={`w-6 h-6 ${
+                              active
+                                ? "fill-[#F59E0B] text-[#F59E0B]"
+                                : "text-[#D1D5DB]"
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-[#111827]">
+                      판매 시작했어요
+                    </p>
+                    <p className="text-xs text-[#6B7280] mt-0.5">
+                      판매 중인 메뉴로 표시합니다
+                    </p>
+                  </div>
+                  <Switch
+                    checked={recipe.is_selling}
+                    onCheckedChange={handleSellingToggle}
+                    aria-label="판매 중"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
