@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import { Textarea } from "../components/ui/textarea";
 import { api, RecipeListItem, RecipeStatus } from "@/lib/api";
 
 const FILTERS: { id: RecipeStatus; label: string }[] = [
@@ -13,6 +22,9 @@ const FILTERS: { id: RecipeStatus; label: string }[] = [
 export function AdminPage() {
   const [filter, setFilter] = useState<RecipeStatus>("pending_review");
   const [recipes, setRecipes] = useState<RecipeListItem[] | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<RecipeListItem | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const load = async (status: RecipeStatus) => {
     setRecipes(null);
@@ -29,13 +41,48 @@ export function AdminPage() {
     load(filter);
   }, [filter]);
 
-  const updateStatus = async (id: string, status: RecipeStatus) => {
+  const updateStatus = async (
+    id: string,
+    status: RecipeStatus,
+    reason = ""
+  ) => {
     try {
-      await api.updateRecipeStatus(id, status);
+      await api.updateRecipeStatus(id, status, reason);
       toast.success("상태가 변경되었습니다");
       load(filter);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "변경 실패");
+    }
+  };
+
+  const openRejectDialog = (recipe: RecipeListItem) => {
+    setRejectTarget(recipe);
+    setRejectReason(recipe.rejection_reason || "");
+  };
+
+  const closeRejectDialog = () => {
+    if (submitting) return;
+    setRejectTarget(null);
+    setRejectReason("");
+  };
+
+  const confirmReject = async () => {
+    if (!rejectTarget) return;
+    if (!rejectReason.trim()) {
+      toast.error("반려 사유를 입력해주세요");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.updateRecipeStatus(rejectTarget.id, "rejected", rejectReason.trim());
+      toast.success("반려되었습니다");
+      setRejectTarget(null);
+      setRejectReason("");
+      load(filter);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "반려 실패");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -88,6 +135,11 @@ export function AdminPage() {
                   <tr key={r.id} className="border-b border-[#F3F4F6]">
                     <td className="p-3">
                       <div className="font-semibold text-[#111827]">{r.name}</div>
+                      {r.status === "rejected" && r.rejection_reason && (
+                        <div className="mt-1 text-xs text-[#B91C1C]">
+                          반려 사유: {r.rejection_reason}
+                        </div>
+                      )}
                     </td>
                     <td className="p-3 text-[#4B5563]">{r.region}</td>
                     <td className="p-3 text-[#4B5563]">{r.era}</td>
@@ -111,7 +163,7 @@ export function AdminPage() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => updateStatus(r.id, "rejected")}
+                          onClick={() => openRejectDialog(r)}
                         >
                           반려
                         </Button>
@@ -124,6 +176,45 @@ export function AdminPage() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={rejectTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) closeRejectDialog();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>레시피 반려</DialogTitle>
+            <DialogDescription>
+              {rejectTarget?.name} 을(를) 반려합니다. 사유는 사용자에게 전달됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="예: 재료가 식약처 기준을 충족하지 않아 반려됩니다."
+            rows={4}
+            disabled={submitting}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={closeRejectDialog}
+              disabled={submitting}
+            >
+              취소
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmReject}
+              disabled={submitting || !rejectReason.trim()}
+            >
+              반려 확정
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
