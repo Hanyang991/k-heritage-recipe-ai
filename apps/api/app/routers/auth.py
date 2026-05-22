@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.db.session import get_db
 from app.models.subscription import Plan, Subscription
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -65,9 +65,9 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(refresh_token: str, db: Session = Depends(get_db)) -> TokenResponse:
+def refresh(payload_in: RefreshRequest, db: Session = Depends(get_db)) -> TokenResponse:
     try:
-        payload = decode_token(refresh_token)
+        payload = decode_token(payload_in.refresh_token)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

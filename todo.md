@@ -77,7 +77,7 @@
 - [x] SQLAlchemy 2.x + Alembic migrations
 - [x] SQLite(dev/test) / Postgres(compose)
 - [x] 어댑터 패턴 (LLM / Heritage / Payments)
-- [x] 17개 pytest 통과 (별점/판매 토글 + 반려 사유 케이스 포함)
+- [x] 21개 pytest 통과 (별점/판매 토글 + 반려 사유 + refresh 케이스 포함)
 - [x] ruff lint + format check
 - [ ] **Redis 캐싱** (현재 compose에만 떠있고 코드에서 미사용) — 트렌드 / 문서 검색 캐시
 - [ ] 백그라운드 잡 큐 (Celery / RQ / Cloud Tasks)
@@ -114,7 +114,7 @@
 - [x] `ProtectedRoute` (auth + admin 가드)
 - [x] JWT localStorage 저장 (`kh.access_token`, `kh.refresh_token`)
 - [x] 사이드바 인증 / 역할별 메뉴
-- [ ] Refresh token 자동 갱신 (현재는 401시 로그아웃)
+- [x] Refresh token 자동 갱신 (api 클라이언트가 401 수신 시 1회 refresh 후 동일 요청 재시도)
 - [ ] 비로그인 사용자 랜딩 페이지
 
 ### 2.3 API 클라이언트 (`src/lib/api.ts`)
@@ -158,7 +158,7 @@
 
 ## 4. 테스트
 
-- [x] 백엔드 단위 / 통합 테스트 13개 (auth / recipes / admin / trends / quotas / PDF)
+- [x] 백엔드 단위 / 통합 테스트 21개 (auth / recipes / admin / trends / quotas / PDF + refresh)
 - [ ] **프론트엔드 단위 테스트** (Vitest + React Testing Library)
 - [ ] **E2E 테스트** (Playwright) — 핵심 사용자 플로우
   - [ ] 회원가입 → 로그인 → 레시피 생성 → PDF 다운로드
@@ -200,7 +200,7 @@
 **Now (다음 스프린트)**
 1. ~~별점 / 판매중 토글 백엔드 저장~~ ✅ (PR: rating + rejection)
 2. ~~관리자 거부 사유 입력 + 사용자 알림~~ ✅ (PR: rating + rejection)
-3. Refresh token 자동 갱신
+3. ~~Refresh token 자동 갱신~~ ✅ (PR: auto-refresh)
 4. 온보딩 페이지
 
 **Next (실 키 받으면)**
