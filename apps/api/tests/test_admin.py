@@ -45,16 +45,12 @@ def test_admin_can_list_pending_recipes(client: TestClient) -> None:
         json={"email": "admin@example.com", "password": "secret123"},
     ).json()["access_token"]
 
-    r = client.get(
-        "/v1/admin/recipes", headers={"Authorization": f"Bearer {admin_token}"}
-    )
+    r = client.get("/v1/admin/recipes", headers={"Authorization": f"Bearer {admin_token}"})
     assert r.status_code == 200, r.text
     assert len(r.json()) == 3
 
 
 def test_non_admin_cannot_access_admin_routes(client: TestClient) -> None:
     user_token = _register(client, "regular@example.com")
-    r = client.get(
-        "/v1/admin/recipes", headers={"Authorization": f"Bearer {user_token}"}
-    )
+    r = client.get("/v1/admin/recipes", headers={"Authorization": f"Bearer {user_token}"})
     assert r.status_code == 403

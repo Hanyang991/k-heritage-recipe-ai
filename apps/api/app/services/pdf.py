@@ -127,7 +127,9 @@ def render_certificate_pdf(recipe: Recipe) -> bytes:
         height - 9 * cm,
         f"Region: {recipe.region}  |  Era: {recipe.era}",
     )
-    c.drawCentredString(width / 2, height - 9.7 * cm, recipe.source_attribution or "공공누리 제1유형")
+    c.drawCentredString(
+        width / 2, height - 9.7 * cm, recipe.source_attribution or "공공누리 제1유형"
+    )
 
     c.setFont("Helvetica-Oblique", 9)
     c.drawCentredString(

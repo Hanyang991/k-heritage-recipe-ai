@@ -40,9 +40,7 @@ def generate_recipes(
     _enforce_quota(current_user)
 
     heritage = get_heritage_adapter()
-    matches = heritage.search(
-        keyword=payload.keyword, region=payload.region, limit=3
-    )
+    matches = heritage.search(keyword=payload.keyword, region=payload.region, limit=3)
 
     matched_docs_payload = [
         {
@@ -93,9 +91,7 @@ def generate_recipes(
         )
         # Attach ingredients
         for sort_order, ing in enumerate(c.ingredients):
-            ingredient = (
-                db.query(Ingredient).filter(Ingredient.name == ing.name).one_or_none()
-            )
+            ingredient = db.query(Ingredient).filter(Ingredient.name == ing.name).one_or_none()
             if ingredient is None:
                 ingredient = Ingredient(name=ing.name)
                 db.add(ingredient)
@@ -196,9 +192,7 @@ def export_recipe_pdf(
     db: Session = Depends(get_db),
 ) -> Response:
     recipe = _get_owned_recipe(db, recipe_id, current_user)
-    watermark = (
-        current_user.subscription is None or current_user.subscription.plan == Plan.FREE
-    )
+    watermark = current_user.subscription is None or current_user.subscription.plan == Plan.FREE
     pdf = render_recipe_pdf(recipe, watermark=watermark)
     return Response(
         content=pdf,
@@ -280,7 +274,9 @@ def _to_detail(recipe: Recipe) -> RecipeDetailOut:
         estimated_cost_krw=recipe.estimated_cost_krw,
         estimated_price_krw=recipe.estimated_price_krw,
         steps=[
-            RecipeStep(**s) if isinstance(s, dict) else RecipeStep(title=s.title, description=s.description)
+            RecipeStep(**s)
+            if isinstance(s, dict)
+            else RecipeStep(title=s.title, description=s.description)
             for s in (recipe.steps or [])
         ],
         ingredients=[

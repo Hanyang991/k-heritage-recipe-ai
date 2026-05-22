@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
 
-class Plan(str, enum.Enum):
+class Plan(enum.StrEnum):
     FREE = "free"
     PRO = "pro"
     B2B = "b2b"

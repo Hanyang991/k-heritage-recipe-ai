@@ -15,9 +15,7 @@ router = APIRouter(prefix="/trends", tags=["trends"])
 @router.get("", response_model=list[TrendOut])
 def list_trends(region: str = "전국", db: Session = Depends(get_db)) -> list[TrendOut]:
     """Return the most recent week's trends, optionally filtered by region."""
-    latest_week = (
-        db.query(Trend.week_of).order_by(Trend.week_of.desc()).limit(1).scalar()
-    )
+    latest_week = db.query(Trend.week_of).order_by(Trend.week_of.desc()).limit(1).scalar()
     if latest_week is None:
         # Empty DB — return an empty list rather than 404 so the dashboard renders.
         return []

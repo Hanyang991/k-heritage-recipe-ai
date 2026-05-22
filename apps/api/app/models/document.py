@@ -20,7 +20,9 @@ class Document(Base, TimestampMixin):
         doc="jangseogak / nfm / culture",
     )
     region: Mapped[str] = mapped_column(String(60), default="")
-    period: Mapped[str] = mapped_column(String(60), default="", doc="조선전기 / 조선후기 / 근대 etc.")
+    period: Mapped[str] = mapped_column(
+        String(60), default="", doc="조선전기 / 조선후기 / 근대 etc."
+    )
     category: Mapped[str] = mapped_column(String(60), default="")
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
