@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+*.db
+.env
+
+# Node
+node_modules/
+.pnpm-store/
+.turbo/
+
+# Build output
+apps/web/dist/
+apps/api/.venv/
+apps/api/*.db
+
+# IDE
+.idea/
+.vscode/
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Test / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Docker
+docker-compose.override.yml
