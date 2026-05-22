@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    name: Backend (FastAPI)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install 'bcrypt<4.1'
+      - name: Lint (ruff)
+        run: ruff check app tests
+      - name: Format check (ruff)
+        run: ruff format --check app tests
+      - name: Run tests
+        run: pytest -v
+        env:
+          JWT_SECRET_KEY: ci-test-secret-key-must-be-long
+          LLM_PROVIDER: mock
+          HERITAGE_PROVIDER: mock
+          PAYMENTS_PROVIDER: mock
+
+  web:
+    name: Frontend (React)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        run: npm ci || npm install --no-audit --no-fund
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
