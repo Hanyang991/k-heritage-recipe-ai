@@ -7,7 +7,14 @@ import {
   useMemo,
   useState,
 } from "react";
-import { api, clearTokens, getToken, setTokens, User } from "@/lib/api";
+import {
+  api,
+  clearTokens,
+  getToken,
+  setOnSessionExpired,
+  setTokens,
+  User,
+} from "@/lib/api";
 
 interface AuthState {
   user: User | null;
@@ -66,6 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     clearTokens();
     setUser(null);
+  }, []);
+
+  useEffect(() => {
+    // When the api client gives up on refreshing the access token, kick the
+    // user out so guards re-route them to /login on the next render.
+    setOnSessionExpired(() => setUser(null));
+    return () => setOnSessionExpired(null);
   }, []);
 
   const value = useMemo(

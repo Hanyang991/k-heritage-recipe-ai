@@ -12,6 +12,10 @@ export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_KEY);
+}
+
 export function setTokens(access: string, refresh: string) {
   localStorage.setItem(TOKEN_KEY, access);
   localStorage.setItem(REFRESH_KEY, refresh);
@@ -20,6 +24,48 @@ export function setTokens(access: string, refresh: string) {
 export function clearTokens() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
+}
+
+let onSessionExpired: (() => void) | null = null;
+
+/** Wire a callback that fires when a refresh attempt definitively fails so the
+ *  UI layer can sign the user out (instead of looping on 401s). */
+export function setOnSessionExpired(cb: (() => void) | null) {
+  onSessionExpired = cb;
+}
+
+// In-flight refresh promise so concurrent 401s share a single refresh call.
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch("/v1/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!res.ok) {
+        clearTokens();
+        onSessionExpired?.();
+        return null;
+      }
+      const tokens = (await res.json()) as TokenResponse;
+      setTokens(tokens.access_token, tokens.refresh_token);
+      return tokens.access_token;
+    } catch {
+      clearTokens();
+      onSessionExpired?.();
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
 }
 
 export type Plan = "free" | "pro" | "b2b";
@@ -153,7 +199,8 @@ export interface ApiError extends Error {
 async function request<T>(
   path: string,
   init: RequestInit = {},
-  auth = true
+  auth = true,
+  isRetry = false
 ): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body) {
@@ -164,6 +211,20 @@ async function request<T>(
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
   const res = await fetch(`/v1${path}`, { ...init, headers });
+
+  // 401 on an authenticated request → try to silently refresh once, then retry.
+  // Skip the refresh path itself to avoid recursion and skip non-auth calls.
+  if (
+    res.status === 401 &&
+    auth &&
+    !isRetry &&
+    path !== "/auth/refresh" &&
+    getRefreshToken()
+  ) {
+    const fresh = await refreshAccessToken();
+    if (fresh) return request<T>(path, init, auth, true);
+  }
+
   if (res.status === 204) return undefined as unknown as T;
 
   const contentType = res.headers.get("content-type") || "";
@@ -200,6 +261,12 @@ export const api = {
       false
     ),
   me: () => request<User>("/auth/me"),
+  refresh: (refreshToken: string) =>
+    request<TokenResponse>(
+      "/auth/refresh",
+      { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) },
+      false
+    ),
 
   // trends
   listTrends: (region?: string) => {
