@@ -9,6 +9,11 @@ from app.services.trends.base import (
     TrendsAdapter,
     TrendsAdapterError,
 )
+from app.services.trends.discovery import (
+    CuratedWatchlistDiscovery,
+    DiscoveredKeyword,
+    TrendKeywordDiscovery,
+)
 from app.services.trends.mock import MockTrendsAdapter
 from app.services.trends.naver import NaverDatalabAdapter
 
@@ -30,10 +35,20 @@ def get_trends_adapter() -> TrendsAdapter:
     return MockTrendsAdapter()
 
 
+@lru_cache
+def get_trend_discovery() -> TrendKeywordDiscovery:
+    """Default discovery: curated pool ranked by ratio + rise via the adapter."""
+    return CuratedWatchlistDiscovery(get_trends_adapter())
+
+
 __all__ = [
+    "CuratedWatchlistDiscovery",
+    "DiscoveredKeyword",
     "TrendDataPoint",
+    "TrendKeywordDiscovery",
     "TrendKeywordSeries",
     "TrendsAdapter",
     "TrendsAdapterError",
+    "get_trend_discovery",
     "get_trends_adapter",
 ]

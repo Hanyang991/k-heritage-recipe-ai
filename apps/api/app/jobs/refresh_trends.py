@@ -1,29 +1,23 @@
-"""Refresh the weekly trend snapshot from the configured trends adapter.
+"""Refresh the weekly trend snapshot via the configured discovery source.
 
-Pulls a weekly time-series for the watchlist via ``TrendsAdapter`` and writes
-the latest week into the ``trends`` table:
+Calls ``TrendKeywordDiscovery`` (default ``CuratedWatchlistDiscovery`` over
+``DEFAULT_WATCHLIST``) to rank the candidate pool and writes the top-N into
+the ``trends`` table:
 
-- ``rank`` is assigned by sorting the watchlist by the current week's ratio,
-  descending.
-- ``change_percent`` is the % change of ratio vs the previous week for the
-  same keyword. ``is_up`` is True iff current >= previous.
-- Existing rows for the same ``(keyword, region, week_of)`` are updated
-  in place; missing rows are inserted.
-
-Per-chunk normalization caveat
-------------------------------
-Naver DataLab caps a single request at 5 keywordGroups, so a 20-keyword
-watchlist is split into 4 calls. Each call's ``ratio`` is normalized to its
-own 100 = peak, which means cross-chunk ranks are an approximation. The
-``change_percent`` metric (per-keyword, vs its own previous week) is
-unaffected. A pivot-based cross-chunk normalization can be added later
-without changing the persisted schema.
+- ``rank`` is assigned by the discovery's score (blended popularity + rise),
+  not raw current ratio. This is what makes the dashboard's "급상승" label
+  honest: a stable-but-popular keyword and a small-but-spiking one get
+  balanced consideration.
+- ``change_percent`` is the week-over-week % change carried over from the
+  discovery output. ``is_up`` is ``True`` iff that change is ``>= 0``.
+- Rows for the same ``(keyword, region, week_of)`` are updated in place;
+  rows for keywords that fell out of the top-N stay in the table (history).
 
 Usage
 -----
 ::
 
-    # ad-hoc run
+    # ad-hoc run with whatever discovery+adapter is configured
     python -m app.jobs.refresh_trends
 
     # admin-triggered (see POST /v1/admin/trends/refresh)
@@ -41,7 +35,13 @@ from sqlalchemy.orm import Session
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.models.trend import Trend
-from app.services.trends import TrendsAdapter, get_trends_adapter
+from app.services.trends import (
+    CuratedWatchlistDiscovery,
+    TrendKeywordDiscovery,
+    TrendsAdapter,
+    get_trend_discovery,
+    get_trends_adapter,
+)
 from app.services.trends.watchlist import DEFAULT_WATCHLIST
 
 logger = logging.getLogger(__name__)
@@ -59,47 +59,49 @@ def refresh_trends(
     *,
     watchlist: list[str] | None = None,
     weeks: int = 8,
+    top_n: int = 20,
     region: str = "전국",
     adapter: TrendsAdapter | None = None,
+    discovery: TrendKeywordDiscovery | None = None,
     today: date | None = None,
 ) -> RefreshResult:
-    """Pull latest weekly series and upsert one ``Trend`` row per keyword."""
-    watchlist = watchlist or DEFAULT_WATCHLIST
-    adapter = adapter or get_trends_adapter()
+    """Discover the top-N trending keywords and upsert one ``Trend`` row each.
+
+    ``adapter`` is a convenience: if you pass an adapter and no ``discovery``,
+    the function builds a ``CuratedWatchlistDiscovery`` around it. Explicit
+    ``discovery`` always wins. Passing ``watchlist`` only takes effect when
+    discovery is built from adapter — explicit ``discovery`` already carries
+    its own candidate pool.
+    """
     end = today or date.today()
-    start = end - timedelta(weeks=weeks)
+    week_of = end - timedelta(days=end.weekday())  # Monday of `end`'s week
 
-    series = adapter.fetch_series(watchlist, start, end, "week")
-    if not series:
-        logger.info("adapter returned no series — skipping refresh")
+    if discovery is None:
+        if adapter is not None:
+            candidates = watchlist if watchlist is not None else DEFAULT_WATCHLIST
+            discovery = CuratedWatchlistDiscovery(adapter, candidates, weeks=weeks)
+        else:
+            discovery = get_trend_discovery()
+            # Re-build with overridden watchlist if the caller asked for one.
+            if watchlist is not None:
+                discovery = CuratedWatchlistDiscovery(get_trends_adapter(), watchlist, weeks=weeks)
+
+    discovered = discovery.discover(today=end, limit=top_n)
+    if not discovered:
+        logger.info("discovery returned no candidates — skipping refresh")
         return RefreshResult(week_of=None, inserted=0, updated=0)
-
-    latest_period = max((p.period for s in series for p in s.data), default=None)
-    if latest_period is None:
-        logger.info("series have no datapoints — skipping refresh")
-        return RefreshResult(week_of=None, inserted=0, updated=0)
-
-    stats: list[tuple[str, float, float, bool]] = []
-    for s in series:
-        ordered = sorted(s.data, key=lambda p: p.period)
-        if not ordered:
-            continue
-        current = ordered[-1].ratio
-        previous = ordered[-2].ratio if len(ordered) >= 2 else current
-        change_pct = ((current - previous) / previous * 100.0) if previous > 0 else 0.0
-        stats.append((s.keyword, current, round(change_pct, 2), current >= previous))
-
-    stats.sort(key=lambda t: -t[1])
 
     inserted = 0
     updated = 0
-    for rank, (keyword, _current, change_pct, is_up) in enumerate(stats, start=1):
+    for rank, d in enumerate(discovered, start=1):
+        change_pct = round(d.rise_percent if d.rise_percent is not None else 0.0, 2)
+        is_up = change_pct >= 0
         existing = (
             db.query(Trend)
             .filter(
-                Trend.keyword == keyword,
+                Trend.keyword == d.keyword,
                 Trend.region == region,
-                Trend.week_of == latest_period,
+                Trend.week_of == week_of,
             )
             .one_or_none()
         )
@@ -107,12 +109,12 @@ def refresh_trends(
             db.add(
                 Trend(
                     id=str(uuid.uuid4()),
-                    keyword=keyword,
+                    keyword=d.keyword,
                     rank=rank,
                     region=region,
                     change_percent=change_pct,
                     is_up=is_up,
-                    week_of=latest_period,
+                    week_of=week_of,
                 )
             )
             inserted += 1
@@ -125,11 +127,11 @@ def refresh_trends(
     db.commit()
     logger.info(
         "refresh complete: week_of=%s inserted=%d updated=%d",
-        latest_period,
+        week_of,
         inserted,
         updated,
     )
-    return RefreshResult(week_of=latest_period, inserted=inserted, updated=updated)
+    return RefreshResult(week_of=week_of, inserted=inserted, updated=updated)
 
 
 def main() -> None:
