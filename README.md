@@ -58,8 +58,8 @@ Seeded accounts:
 
 | Role  | Email                    | Password    |
 | ----- | ------------------------ | ----------- |
-| user  | `demo@k-heritage.local`  | `demo1234`  |
-| admin | `admin@k-heritage.local` | `admin1234` |
+| user  | `demo@k-heritage.app`    | `demo1234`  |
+| admin | `admin@k-heritage.app`   | `admin1234` |
 
 ### Frontend
 

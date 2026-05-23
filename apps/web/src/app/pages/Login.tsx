@@ -11,7 +11,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("demo@k-heritage.local");
+  const [email, setEmail] = useState("demo@k-heritage.app");
   const [password, setPassword] = useState("demo1234");
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -110,8 +110,8 @@ export function LoginPage() {
 
         <div className="mt-6 p-3 bg-[#F3F4F6] rounded text-xs text-[#4B5563]">
           <p className="font-semibold mb-1">데모 계정</p>
-          <p>유저: demo@k-heritage.local / demo1234</p>
-          <p>관리자: admin@k-heritage.local / admin1234</p>
+          <p>유저: demo@k-heritage.app / demo1234</p>
+          <p>관리자: admin@k-heritage.app / admin1234</p>
         </div>
       </div>
     </div>
