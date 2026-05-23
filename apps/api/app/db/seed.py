@@ -23,9 +23,11 @@ from app.services.heritage.mock import MockHeritageAdapter
 
 logger = logging.getLogger(__name__)
 
-_DEMO_USER_EMAIL = "demo@k-heritage.local"
+# NB: domain must NOT be a reserved TLD (e.g. .local / .test / .invalid),
+# otherwise pydantic's EmailStr blocks the seeded accounts from ever logging in.
+_DEMO_USER_EMAIL = "demo@k-heritage.app"
 _DEMO_USER_PASSWORD = "demo1234"
-_ADMIN_USER_EMAIL = "admin@k-heritage.local"
+_ADMIN_USER_EMAIL = "admin@k-heritage.app"
 _ADMIN_USER_PASSWORD = "admin1234"
 
 

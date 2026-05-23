@@ -1,6 +1,6 @@
 ---
 name: local-dev
-description: Run, seed, lint and test the K-Heritage Recipe AI stack locally. Covers Vite proxy gotcha and the demo-account login bug. Use whenever you need to bring the full stack up for manual or browser testing.
+description: Run, seed, lint and test the K-Heritage Recipe AI stack locally. Covers the Vite proxy gotcha and the rule that seeded emails must use a non-reserved TLD. Use whenever you need to bring the full stack up for manual or browser testing.
 ---
 
 # Local dev — K-Heritage Recipe AI
@@ -36,12 +36,12 @@ cd apps/web && npm run dev   # DO NOT set VITE_API_URL (see gotcha below)
 ### 1. `VITE_API_URL` must NOT include `/v1`
 `apps/web/vite.config.ts` proxies `/v1/*` to `${VITE_API_URL || 'http://localhost:8000'}`. The api client (`src/lib/api.ts`) already prefixes paths with `/v1`. If you export `VITE_API_URL=http://localhost:8000/v1` every request becomes `/v1/v1/...` → 404. Either leave the env var unset (recommended) or use `VITE_API_URL=http://localhost:8000`.
 
-### 2. Demo / admin accounts cannot log in via the API
-`pydantic.EmailStr` (email-validator) rejects the reserved `.local` TLD. The seeded users `demo@k-heritage.local` and `admin@k-heritage.local` exist in the DB (inserted via ORM, bypassing schema validation) but `/v1/auth/login` returns **422** for them:
+### 2. Seeded / test emails must use a non-reserved TLD
+`pydantic.EmailStr` (email-validator) rejects reserved TLDs such as `.local`, `.test`, `.invalid`, `.localhost` with a **422** at the request-schema layer:
 ```
 value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email.
 ```
-For any UI testing that needs an authenticated user, **register a fresh `@gmail.com` (or other non-reserved) account** instead of trying to log in as demo/admin. Same applies to register: don't try `.local` emails.
+Seed currently uses `demo@k-heritage.app` / `admin@k-heritage.app` (both validate). When adding new seed users or fixtures, stick to `.app` / `.com` / `.dev` etc. Test fixtures already use `@example.com` which is accepted by email-validator.
 
 ## Commands
 
