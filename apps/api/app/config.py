@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     heritage_provider: Literal["mock", "live"] = "mock"
     payments_provider: Literal["mock", "live"] = "mock"
     trends_provider: Literal["mock", "live"] = "mock"
+    trends_discovery_source: Literal["curated", "shopping_insight"] = "curated"
 
     gemini_api_key: str = ""
     jangseogak_api_key: str = ""
@@ -37,6 +38,7 @@ class Settings(BaseSettings):
     naver_datalab_client_id: str = ""
     naver_datalab_client_secret: str = ""
     naver_datalab_base_url: str = "https://openapi.naver.com"
+    naver_shopping_insight_category_code: str = "50000006"
 
     cors_allow_origins: str = "http://localhost:5173,http://localhost:3000"
 
