@@ -112,6 +112,17 @@ export interface Trend {
   week_of: string;
 }
 
+export interface TrendSeriesPoint {
+  period: string;
+  ratio: number;
+}
+
+export interface TrendSeries {
+  keyword: string;
+  time_unit: string;
+  points: TrendSeriesPoint[];
+}
+
 export interface HeritageDocument {
   id: string;
   title: string;
@@ -289,6 +300,10 @@ export const api = {
   listTrends: (region?: string) => {
     const qs = region ? `?region=${encodeURIComponent(region)}` : "";
     return request<Trend[]>(`/trends${qs}`, {}, false);
+  },
+  getTrendSeries: (keyword: string, weeks = 8) => {
+    const qs = new URLSearchParams({ keyword, weeks: String(weeks) }).toString();
+    return request<TrendSeries>(`/trends/series?${qs}`, {}, false);
   },
 
   // documents
