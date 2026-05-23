@@ -14,9 +14,11 @@ Two layers, both swappable via env vars:
 
 Mock mode for shopping_insight reuses ``MockTrendsAdapter`` so dev/CI never
 needs Naver credentials; only ``TRENDS_PROVIDER=live`` activates the live
-shopping insight endpoint. ``open`` discovery providers (Google Trends today,
-Naver News + LLM in later PRs) make their own HTTP calls and degrade to
-zero candidates on any failure so the refresh job stays robust.
+shopping insight endpoint. ``open`` discovery providers (Google Trends RSS,
+Naver Search News, and the upcoming LLM expansion) make their own HTTP calls
+and degrade to zero candidates on any failure so the refresh job stays
+robust. The Naver News provider reuses the same client credentials as
+Datalab — the Naver Developers app just needs the "검색" service enabled.
 """
 
 from functools import lru_cache
@@ -42,6 +44,7 @@ from app.services.trends.google_trends import GoogleTrendsCandidateProvider
 from app.services.trends.mock import MockTrendsAdapter
 from app.services.trends.multi_source import MultiSourceDiscovery
 from app.services.trends.naver import NaverDatalabAdapter
+from app.services.trends.naver_news import DEFAULT_SEED_QUERIES, NaverNewsCandidateProvider
 from app.services.trends.shopping_insight import (
     FOOD_CATEGORY_CODE,
     NaverShoppingInsightAdapter,
@@ -77,9 +80,9 @@ def get_trend_discovery() -> TrendKeywordDiscovery:
       signal); in mock mode reuses ``MockTrendsAdapter`` so dev/CI doesn't
       need network or credentials.
     - ``open``: ``MultiSourceDiscovery`` over the curated static watchlist
-      plus enabled open-discovery providers (Google Trends today, Naver
-      News + LLM expansion in later PRs). Open providers degrade to zero
-      candidates on failure; series fetching uses the same adapter as
+      plus enabled open-discovery providers (Google Trends RSS, Naver
+      Search News, and LLM expansion in PR #15). Open providers degrade to
+      zero candidates on failure; series fetching uses the same adapter as
       ``curated`` so the upstream Naver toggle still applies.
     """
     settings = get_settings()
@@ -110,6 +113,20 @@ def get_trend_discovery() -> TrendKeywordDiscovery:
                     hl=settings.google_trends_hl,
                 )
             )
+        if settings.trends_open_naver_news_enabled:
+            seed_queries = (
+                tuple(q.strip() for q in settings.naver_news_seed_queries.split(",") if q.strip())
+                or DEFAULT_SEED_QUERIES
+            )
+            providers.append(
+                NaverNewsCandidateProvider(
+                    client_id=settings.naver_datalab_client_id,
+                    client_secret=settings.naver_datalab_client_secret,
+                    seed_queries=seed_queries,
+                    display_per_query=settings.naver_news_display_per_query,
+                    base_url=settings.naver_datalab_base_url,
+                )
+            )
         return MultiSourceDiscovery(get_trends_adapter(), providers)
 
     return CuratedWatchlistDiscovery(get_trends_adapter())
@@ -121,6 +138,7 @@ __all__ = [
     "FOOD_CATEGORY_CODE",
     "GoogleTrendsCandidateProvider",
     "MultiSourceDiscovery",
+    "NaverNewsCandidateProvider",
     "NaverShoppingInsightAdapter",
     "NaverShoppingInsightDiscovery",
     "StaticCandidateProvider",

@@ -10,6 +10,7 @@ from app.services.trends import (
     CuratedWatchlistDiscovery,
     GoogleTrendsCandidateProvider,
     MultiSourceDiscovery,
+    NaverNewsCandidateProvider,
     NaverShoppingInsightDiscovery,
     StaticCandidateProvider,
     get_trend_discovery,
@@ -218,6 +219,7 @@ def test_factory_open_returns_multi_source(monkeypatch: pytest.MonkeyPatch) -> N
         provider_names = [p.name for p in d.providers]
         assert "static" in provider_names
         assert "google_trends_daily" in provider_names
+        assert "naver_news" in provider_names
     finally:
         _clear_caches()
 
@@ -225,6 +227,37 @@ def test_factory_open_returns_multi_source(monkeypatch: pytest.MonkeyPatch) -> N
 def test_factory_open_can_disable_google(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TRENDS_DISCOVERY_SOURCE", "open")
     monkeypatch.setenv("TRENDS_OPEN_GOOGLE_ENABLED", "false")
+    _clear_caches()
+    try:
+        d = get_trend_discovery()
+        assert isinstance(d, MultiSourceDiscovery)
+        provider_names = [p.name for p in d.providers]
+        assert provider_names == ["static", "naver_news"]
+    finally:
+        _clear_caches()
+
+
+def test_factory_open_can_disable_naver_news(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRENDS_DISCOVERY_SOURCE", "open")
+    monkeypatch.setenv("TRENDS_OPEN_NAVER_NEWS_ENABLED", "false")
+    _clear_caches()
+    try:
+        d = get_trend_discovery()
+        assert isinstance(d, MultiSourceDiscovery)
+        provider_names = [p.name for p in d.providers]
+        assert "naver_news" not in provider_names
+        assert "static" in provider_names
+        assert "google_trends_daily" in provider_names
+    finally:
+        _clear_caches()
+
+
+def test_factory_open_can_disable_both_open_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRENDS_DISCOVERY_SOURCE", "open")
+    monkeypatch.setenv("TRENDS_OPEN_GOOGLE_ENABLED", "false")
+    monkeypatch.setenv("TRENDS_OPEN_NAVER_NEWS_ENABLED", "false")
     _clear_caches()
     try:
         d = get_trend_discovery()
@@ -281,5 +314,52 @@ def test_factory_google_trends_provider_construction_respects_settings(
         assert google is not None
         assert google._geo == "US"  # type: ignore[attr-defined]
         assert google._hl == "en-US"  # type: ignore[attr-defined]
+    finally:
+        _clear_caches()
+
+
+def test_factory_naver_news_provider_construction_respects_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRENDS_DISCOVERY_SOURCE", "open")
+    monkeypatch.setenv("NAVER_DATALAB_CLIENT_ID", "id-123")
+    monkeypatch.setenv("NAVER_DATALAB_CLIENT_SECRET", "secret-456")
+    monkeypatch.setenv("NAVER_NEWS_SEED_QUERIES", "호떡 트렌드, 한과 신상,")
+    monkeypatch.setenv("NAVER_NEWS_DISPLAY_PER_QUERY", "77")
+    _clear_caches()
+    try:
+        d = get_trend_discovery()
+        assert isinstance(d, MultiSourceDiscovery)
+        naver = next(
+            (p for p in d.providers if isinstance(p, NaverNewsCandidateProvider)),
+            None,
+        )
+        assert naver is not None
+        assert naver._client_id == "id-123"  # type: ignore[attr-defined]
+        assert naver._client_secret == "secret-456"  # type: ignore[attr-defined]
+        # Empty seed-query entries are stripped, whitespace trimmed.
+        assert naver._seed_queries == ("호떡 트렌드", "한과 신상")  # type: ignore[attr-defined]
+        assert naver._display_per_query == 77  # type: ignore[attr-defined]
+    finally:
+        _clear_caches()
+
+
+def test_factory_naver_news_seed_queries_fall_back_to_defaults_when_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.trends.naver_news import DEFAULT_SEED_QUERIES
+
+    monkeypatch.setenv("TRENDS_DISCOVERY_SOURCE", "open")
+    monkeypatch.setenv("NAVER_NEWS_SEED_QUERIES", "   ,,,  ")
+    _clear_caches()
+    try:
+        d = get_trend_discovery()
+        assert isinstance(d, MultiSourceDiscovery)
+        naver = next(
+            (p for p in d.providers if isinstance(p, NaverNewsCandidateProvider)),
+            None,
+        )
+        assert naver is not None
+        assert naver._seed_queries == DEFAULT_SEED_QUERIES  # type: ignore[attr-defined]
     finally:
         _clear_caches()
