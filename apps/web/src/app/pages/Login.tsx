@@ -24,11 +24,15 @@ export function LoginPage() {
     try {
       if (mode === "login") {
         await login(email, password);
+        toast.success("환영합니다!");
+        navigate(from, { replace: true });
       } else {
         await register(email, password, displayName);
+        toast.success("회원가입이 완료되었습니다");
+        // New accounts haven't completed onboarding yet — send them there
+        // first so the dashboard can be personalized.
+        navigate("/onboarding", { replace: true });
       }
-      toast.success(mode === "login" ? "환영합니다!" : "회원가입이 완료되었습니다");
-      navigate(from, { replace: true });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "예상치 못한 오류가 발생했습니다";

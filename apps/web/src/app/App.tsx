@@ -7,6 +7,7 @@ import { RecipeGenerate } from "./components/RecipeGenerate";
 import { RecipeResult } from "./components/RecipeResult";
 import { RecipeDetail } from "./components/RecipeDetail";
 import { LoginPage } from "./pages/Login";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { RecipeListPage } from "./pages/RecipeListPage";
 import { DocumentSearchPage } from "./pages/DocumentSearchPage";
 import { SubscriptionPage } from "./pages/SubscriptionPage";
@@ -16,10 +17,11 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 
 function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const isLogin = location.pathname === "/login";
+  const hideSidebar =
+    location.pathname === "/login" || location.pathname === "/onboarding";
   return (
     <div className="size-full flex bg-[#F9FAFB]">
-      {!isLogin && <Sidebar />}
+      {!hideSidebar && <Sidebar />}
       {children}
     </div>
   );
@@ -33,6 +35,14 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute requireOnboarding={false}>
+                  <OnboardingPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/dashboard" element={<TrendDashboard />} />
             <Route path="/documents" element={<DocumentSearchPage />} />
             <Route

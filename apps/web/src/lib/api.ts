@@ -81,7 +81,19 @@ export interface User {
   email: string;
   display_name: string;
   role: "user" | "admin";
+  onboarding_completed: boolean;
+  persona: string;
+  preferred_regions: string[];
+  preferred_keywords: string[];
   subscription: { plan: Plan; monthly_recipe_count: number } | null;
+}
+
+export interface UserUpdatePayload {
+  display_name?: string;
+  persona?: string;
+  preferred_regions?: string[];
+  preferred_keywords?: string[];
+  onboarding_completed?: boolean;
 }
 
 export interface TokenResponse {
@@ -261,6 +273,11 @@ export const api = {
       false
     ),
   me: () => request<User>("/auth/me"),
+  updateMe: (payload: UserUpdatePayload) =>
+    request<User>("/private/users/me", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   refresh: (refreshToken: string) =>
     request<TokenResponse>(
       "/auth/refresh",

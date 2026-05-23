@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Boolean, Enum, String
+from sqlalchemy import JSON, Boolean, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -23,6 +23,12 @@ class User(Base, TimestampMixin):
     display_name: Mapped[str] = mapped_column(String(120), default="")
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.USER, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Onboarding / persona (spec §8.2.1)
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    persona: Mapped[str] = mapped_column(String(60), default="", nullable=False)
+    preferred_regions: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    preferred_keywords: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
     subscription = relationship(
         "Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan"

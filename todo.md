@@ -17,7 +17,7 @@
 - [ ] 패스워드 재설정 플로우 (forgot-password / reset-password)
 - [ ] 소셜 로그인 (Google / Kakao) — Spec 옵션
 - [ ] 계정 삭제 API (GDPR / 개인정보보호법, §13)
-- [ ] 사용자 프로필 편집 (display_name, region preferences)
+- [x] 사용자 프로필 편집 (display_name, persona, preferred_regions, preferred_keywords) — `PATCH /v1/private/users/me`
 
 ### 1.2 트렌드 (§5, §8.2.2)
 - [x] 지역별 인기 키워드 조회
@@ -77,7 +77,7 @@
 - [x] SQLAlchemy 2.x + Alembic migrations
 - [x] SQLite(dev/test) / Postgres(compose)
 - [x] 어댑터 패턴 (LLM / Heritage / Payments)
-- [x] 21개 pytest 통과 (별점/판매 토글 + 반려 사유 + refresh 케이스 포함)
+- [x] 27개 pytest 통과 (별점/판매 토글 + 반려 사유 + refresh + 온보딩 케이스 포함)
 - [x] ruff lint + format check
 - [ ] **Redis 캐싱** (현재 compose에만 떠있고 코드에서 미사용) — 트렌드 / 문서 검색 캐시
 - [ ] 백그라운드 잡 큐 (Celery / RQ / Cloud Tasks)
@@ -103,7 +103,7 @@
 - [x] `/documents` — 키워드 + 기관 검색
 - [x] `/subscription` — 3개 플랜 카드 + 현재 플랜
 - [x] `/admin` — 검수 큐 (관리자 전용)
-- [ ] **`/onboarding`** — 가입 직후 사용자 페르소나 / 선호 지역 설정 (§8.2.1)
+- [x] **`/onboarding`** — 가입 직후 사용자 페르소나 / 선호 지역 / 키워드 설정 (§8.2.1)
 - [ ] `/profile` — 사용자 정보 / 비밀번호 변경
 - [ ] `/recipes/:id/edit` — 레시피 직접 편집
 - [ ] `/documents/:id` — 고문헌 상세
@@ -201,7 +201,7 @@
 1. ~~별점 / 판매중 토글 백엔드 저장~~ ✅ (PR: rating + rejection)
 2. ~~관리자 거부 사유 입력 + 사용자 알림~~ ✅ (PR: rating + rejection)
 3. ~~Refresh token 자동 갱신~~ ✅ (PR: auto-refresh)
-4. 온보딩 페이지
+4. ~~온보딩 페이지~~ ✅ (PR: onboarding)
 
 **Next (실 키 받으면)**
 1. Gemini 실연동

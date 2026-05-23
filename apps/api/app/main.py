@@ -14,7 +14,7 @@ from app import __version__
 from app.config import get_settings
 from app.db.base import Base
 from app.db.session import engine
-from app.routers import admin, auth, documents, payments, recipes, subscription, trends
+from app.routers import admin, auth, documents, payments, recipes, subscription, trends, users
 
 
 @asynccontextmanager
@@ -67,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(recipes.router, prefix=api_v1)
     app.include_router(subscription.router, prefix=api_v1)
     app.include_router(payments.router, prefix=api_v1)
+    app.include_router(users.router, prefix=api_v1)
     app.include_router(admin.router, prefix=api_v1)
 
     @app.get("/healthz", tags=["meta"])

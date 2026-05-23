@@ -105,6 +105,10 @@ def seed_users(db: Session) -> None:
             hashed_password=hash_password(_DEMO_USER_PASSWORD),
             display_name="Demo",
             role=UserRole.USER,
+            onboarding_completed=True,
+            persona="카페 사장",
+            preferred_regions=["전국", "전라북도"],
+            preferred_keywords=["쑥라떼", "오미자에이드"],
         )
         demo.subscription = Subscription(plan=Plan.FREE)
         db.add(demo)
@@ -115,6 +119,7 @@ def seed_users(db: Session) -> None:
             hashed_password=hash_password(_ADMIN_USER_PASSWORD),
             display_name="Admin",
             role=UserRole.ADMIN,
+            onboarding_completed=True,
         )
         admin.subscription = Subscription(plan=Plan.PRO)
         db.add(admin)
