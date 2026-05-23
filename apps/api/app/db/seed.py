@@ -140,6 +140,21 @@ def main() -> None:
         seed_users(db)
         logger.info("Demo account: %s / %s", _DEMO_USER_EMAIL, _DEMO_USER_PASSWORD)
         logger.info("Admin account: %s / %s", _ADMIN_USER_EMAIL, _ADMIN_USER_PASSWORD)
+
+        # When configured for live trends, replace this week's snapshot with
+        # real Naver DataLab data on top of the static seed so the dashboard
+        # boots with current numbers instead of last-month-frozen ones.
+        from app.config import get_settings
+
+        if get_settings().trends_provider == "live":
+            from app.jobs.refresh_trends import refresh_trends
+            from app.services.trends import TrendsAdapterError
+
+            try:
+                result = refresh_trends(db)
+                logger.info("live trends refresh: %s", result)
+            except TrendsAdapterError as exc:
+                logger.warning("live trends refresh skipped: %s", exc)
     finally:
         db.close()
 
