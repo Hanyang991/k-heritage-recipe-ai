@@ -20,3 +20,14 @@ class TrendRefreshResponse(BaseModel):
     week_of: date | None
     inserted: int
     updated: int
+
+
+class TrendSeriesPoint(BaseModel):
+    period: date
+    ratio: float
+
+
+class TrendSeriesOut(BaseModel):
+    keyword: str
+    time_unit: str
+    points: list[TrendSeriesPoint]

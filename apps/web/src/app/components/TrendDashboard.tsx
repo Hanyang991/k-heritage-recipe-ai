@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { TrendingUp, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { TrendingUp, ArrowUpRight, ArrowDownRight, LineChart as LineChartIcon } from "lucide-react";
 import { Button } from "./ui/button";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { TrendSeriesDialog } from "./TrendSeriesDialog";
 import { api, RecipeListItem, Trend } from "@/lib/api";
 import { useAuth } from "../auth/AuthContext";
 
@@ -14,6 +15,7 @@ export function TrendDashboard() {
   const [region, setRegion] = useState("전국");
   const [trends, setTrends] = useState<Trend[] | null>(null);
   const [recentRecipes, setRecentRecipes] = useState<RecipeListItem[]>([]);
+  const [chartKeyword, setChartKeyword] = useState<string | null>(null);
 
   useEffect(() => {
     api.listTrends(region).then(setTrends).catch(() => setTrends([]));
@@ -96,10 +98,9 @@ export function TrendDashboard() {
                 return (
                   <div
                     key={trend.rank}
-                    className={`${bgColor} border-2 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer`}
-                    onClick={() =>
-                      navigate("/generate", { state: { keyword: trend.keyword } })
-                    }
+                    className={`${bgColor} border-2 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer flex flex-col`}
+                    onClick={() => setChartKeyword(trend.keyword)}
+                    title={`${trend.keyword} 시간순 트렌드 보기`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <span className={`text-lg font-bold ${textColor}`}>
@@ -118,7 +119,30 @@ export function TrendDashboard() {
                         <span>{Math.round(trend.change_percent)}%</span>
                       </div>
                     </div>
-                    <p className={`font-semibold ${textColor}`}>{trend.keyword}</p>
+                    <p className={`font-semibold ${textColor} mb-3`}>{trend.keyword}</p>
+                    <div className="mt-auto flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-[11px] text-[#4B5563] hover:text-[#3730A3]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setChartKeyword(trend.keyword);
+                        }}
+                      >
+                        <LineChartIcon className="w-3 h-3" />
+                        그래프
+                      </button>
+                      <button
+                        type="button"
+                        className="ml-auto text-[11px] text-[#3730A3] hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate("/generate", { state: { keyword: trend.keyword } });
+                        }}
+                      >
+                        생성 →
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -188,6 +212,7 @@ export function TrendDashboard() {
           </div>
         )}
       </div>
+      <TrendSeriesDialog keyword={chartKeyword} onClose={() => setChartKeyword(null)} />
     </div>
   );
 }
