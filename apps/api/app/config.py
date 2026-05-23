@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     llm_provider: Literal["mock", "live"] = "mock"
     heritage_provider: Literal["mock", "live"] = "mock"
     payments_provider: Literal["mock", "live"] = "mock"
+    trends_provider: Literal["mock", "live"] = "mock"
 
     gemini_api_key: str = ""
     jangseogak_api_key: str = ""
@@ -33,6 +34,9 @@ class Settings(BaseSettings):
     culture_api_key: str = ""
     toss_secret_key: str = ""
     toss_client_key: str = ""
+    naver_datalab_client_id: str = ""
+    naver_datalab_client_secret: str = ""
+    naver_datalab_base_url: str = "https://openapi.naver.com"
 
     cors_allow_origins: str = "http://localhost:5173,http://localhost:3000"
 
