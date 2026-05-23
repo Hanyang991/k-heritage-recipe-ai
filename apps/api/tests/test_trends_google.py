@@ -82,13 +82,19 @@ def test_provider_name() -> None:
     assert GoogleTrendsCandidateProvider().name == "google_trends_daily"
 
 
-def test_provider_filters_to_food_keywords() -> None:
-    raw = ["BTS 컴백", "쑥라떼", "윤석열 발언", "흑임자빙수", "테슬라 자동차"]
+def test_provider_filters_out_clearly_non_food() -> None:
+    """Denylist-only filter: explicit non-food categories are stripped.
+
+    Bare names + ambiguous words still pass through (philosophy: trust
+    downstream blended score + PR #15 LLM); we only assert that obvious
+    denylist matches are gone.
+    """
+    raw = ["BTS 컴백", "쑥라떼", "태풍 카눈", "흑임자빙수", "테슬라 자동차", "두바이쫀득쿠키"]
     provider = GoogleTrendsCandidateProvider()
     with patch("httpx.Client.get") as get:
         get.return_value = _mock_response(200, _rss(raw))
         out = provider.discover_candidates()
-    assert out == ["쑥라떼", "흑임자빙수"]
+    assert out == ["쑥라떼", "흑임자빙수", "두바이쫀득쿠키"]
 
 
 def test_provider_dedupes_repeated_keywords() -> None:
@@ -138,8 +144,8 @@ def test_provider_sends_geo_query_param() -> None:
         assert get.call_args.kwargs["params"] == {"geo": "KR"}
 
 
-def test_provider_returns_empty_when_no_food_candidates() -> None:
-    raw = ["BTS 컴백", "윤석열 발언", "삼성전자 주가"]
+def test_provider_returns_empty_when_every_keyword_is_on_denylist() -> None:
+    raw = ["BTS 컴백", "태풍 경보", "삼성전자 주가", "K리그 결승"]
     provider = GoogleTrendsCandidateProvider()
     with patch("httpx.Client.get") as get:
         get.return_value = _mock_response(200, _rss(raw))

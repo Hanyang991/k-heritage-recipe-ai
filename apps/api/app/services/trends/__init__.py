@@ -37,7 +37,7 @@ from app.services.trends.discovery import (
     DiscoveredKeyword,
     TrendKeywordDiscovery,
 )
-from app.services.trends.food_filter import filter_food_keywords, is_food_keyword
+from app.services.trends.food_filter import filter_food_adjacent, is_likely_food_adjacent
 from app.services.trends.google_trends import GoogleTrendsCandidateProvider
 from app.services.trends.mock import MockTrendsAdapter
 from app.services.trends.multi_source import MultiSourceDiscovery
@@ -130,8 +130,8 @@ __all__ = [
     "TrendKeywordSeries",
     "TrendsAdapter",
     "TrendsAdapterError",
-    "filter_food_keywords",
+    "filter_food_adjacent",
     "get_trend_discovery",
     "get_trends_adapter",
-    "is_food_keyword",
+    "is_likely_food_adjacent",
 ]

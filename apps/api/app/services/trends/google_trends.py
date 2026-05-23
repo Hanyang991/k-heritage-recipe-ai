@@ -11,16 +11,15 @@ depend on the unmaintained ``pytrends`` package or the legacy
   keyword and ``<ht:approx_traffic>`` an order-of-magnitude volume hint
   ("100+", "1K+", ...). We only need the title for candidate discovery.
 - Surfaces *open-domain* trending searches: politics, sports, celebs,
-  weather, plus the occasional food trend. Filtering to food is the
-  caller's job (see ``food_filter``).
+  weather, plus the occasional food trend. Filtering is delegated to
+  ``food_filter.filter_food_adjacent`` — a denylist-only filter that keeps
+  novel food concepts (탕후루, 마라맛, 두바이쫀득쿠키, …) and drops only
+  clearly non-food categories.
 
 The provider is **lenient on failure**: network errors, rate limits, XML
 parse errors all log a warning and return an empty candidate list. Open-
 discovery providers are by definition optional — a flaky Google response
 should not break the entire ``/v1/admin/trends/refresh`` job.
-
-Food-domain filtering is delegated to ``food_filter.filter_food_keywords``,
-which is shared with Naver News (PR #14) and the LLM expander (PR #15).
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ from xml.etree import ElementTree as ET
 
 import httpx
 
-from app.services.trends.food_filter import filter_food_keywords
+from app.services.trends.food_filter import filter_food_adjacent
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +69,10 @@ class GoogleTrendsCandidateProvider:
         raw = self._fetch_raw_trending()
         if not raw:
             return []
-        food = filter_food_keywords(raw)
+        adjacent = filter_food_adjacent(raw)
         seen: set[str] = set()
         deduped: list[str] = []
-        for kw in food:
+        for kw in adjacent:
             if kw not in seen:
                 seen.add(kw)
                 deduped.append(kw)
