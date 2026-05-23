@@ -6,13 +6,17 @@ Two layers, both swappable via env vars:
   ``TRENDS_PROVIDER=mock|live`` picks ``MockTrendsAdapter`` (default) vs
   ``NaverDatalabAdapter`` (검색어 트렌드).
 - ``TrendKeywordDiscovery`` answers "which keywords should we surface".
-  ``TRENDS_DISCOVERY_SOURCE=curated|shopping_insight`` picks
-  ``CuratedWatchlistDiscovery`` (default, runs over ``TrendsAdapter``) vs
-  ``NaverShoppingInsightDiscovery`` (its own shopping-intent adapter).
+  ``TRENDS_DISCOVERY_SOURCE=curated|shopping_insight|open`` picks
+  ``CuratedWatchlistDiscovery`` (default, closed pool),
+  ``NaverShoppingInsightDiscovery`` (closed pool, shopping intent), or
+  ``MultiSourceDiscovery`` (open pool — static watchlist plus open-discovery
+  providers like Google Trends).
 
 Mock mode for shopping_insight reuses ``MockTrendsAdapter`` so dev/CI never
 needs Naver credentials; only ``TRENDS_PROVIDER=live`` activates the live
-shopping insight endpoint.
+shopping insight endpoint. ``open`` discovery providers (Google Trends today,
+Naver News + LLM in later PRs) make their own HTTP calls and degrade to
+zero candidates on any failure so the refresh job stays robust.
 """
 
 from functools import lru_cache
@@ -24,12 +28,19 @@ from app.services.trends.base import (
     TrendsAdapter,
     TrendsAdapterError,
 )
+from app.services.trends.candidates import (
+    StaticCandidateProvider,
+    TrendCandidateProvider,
+)
 from app.services.trends.discovery import (
     CuratedWatchlistDiscovery,
     DiscoveredKeyword,
     TrendKeywordDiscovery,
 )
+from app.services.trends.food_filter import filter_food_adjacent, is_likely_food_adjacent
+from app.services.trends.google_trends import GoogleTrendsCandidateProvider
 from app.services.trends.mock import MockTrendsAdapter
+from app.services.trends.multi_source import MultiSourceDiscovery
 from app.services.trends.naver import NaverDatalabAdapter
 from app.services.trends.shopping_insight import (
     FOOD_CATEGORY_CODE,
@@ -65,6 +76,11 @@ def get_trend_discovery() -> TrendKeywordDiscovery:
       uses a dedicated ``NaverShoppingInsightAdapter`` (shopping-intent
       signal); in mock mode reuses ``MockTrendsAdapter`` so dev/CI doesn't
       need network or credentials.
+    - ``open``: ``MultiSourceDiscovery`` over the curated static watchlist
+      plus enabled open-discovery providers (Google Trends today, Naver
+      News + LLM expansion in later PRs). Open providers degrade to zero
+      candidates on failure; series fetching uses the same adapter as
+      ``curated`` so the upstream Naver toggle still applies.
     """
     settings = get_settings()
     if settings.trends_discovery_source == "shopping_insight":
@@ -85,6 +101,17 @@ def get_trend_discovery() -> TrendKeywordDiscovery:
             adapter = MockTrendsAdapter()
         return NaverShoppingInsightDiscovery(adapter)
 
+    if settings.trends_discovery_source == "open":
+        providers: list[TrendCandidateProvider] = [StaticCandidateProvider()]
+        if settings.trends_open_google_enabled:
+            providers.append(
+                GoogleTrendsCandidateProvider(
+                    geo=settings.google_trends_geo,
+                    hl=settings.google_trends_hl,
+                )
+            )
+        return MultiSourceDiscovery(get_trends_adapter(), providers)
+
     return CuratedWatchlistDiscovery(get_trends_adapter())
 
 
@@ -92,13 +119,19 @@ __all__ = [
     "CuratedWatchlistDiscovery",
     "DiscoveredKeyword",
     "FOOD_CATEGORY_CODE",
+    "GoogleTrendsCandidateProvider",
+    "MultiSourceDiscovery",
     "NaverShoppingInsightAdapter",
     "NaverShoppingInsightDiscovery",
+    "StaticCandidateProvider",
+    "TrendCandidateProvider",
     "TrendDataPoint",
     "TrendKeywordDiscovery",
     "TrendKeywordSeries",
     "TrendsAdapter",
     "TrendsAdapterError",
+    "filter_food_adjacent",
     "get_trend_discovery",
     "get_trends_adapter",
+    "is_likely_food_adjacent",
 ]

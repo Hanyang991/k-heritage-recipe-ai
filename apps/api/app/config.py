@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     heritage_provider: Literal["mock", "live"] = "mock"
     payments_provider: Literal["mock", "live"] = "mock"
     trends_provider: Literal["mock", "live"] = "mock"
-    trends_discovery_source: Literal["curated", "shopping_insight"] = "curated"
+    trends_discovery_source: Literal["curated", "shopping_insight", "open"] = "curated"
+    trends_open_google_enabled: bool = True
+    google_trends_geo: str = "KR"
+    google_trends_hl: str = "ko-KR"
 
     gemini_api_key: str = ""
     jangseogak_api_key: str = ""
