@@ -14,3 +14,9 @@ class TrendOut(BaseModel):
     change_percent: float
     is_up: bool
     week_of: date
+
+
+class TrendRefreshResponse(BaseModel):
+    week_of: date | None
+    inserted: int
+    updated: int

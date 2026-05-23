@@ -5,9 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_admin
 from app.db.session import get_db
+from app.jobs.refresh_trends import refresh_trends
 from app.models.recipe import Recipe, RecipeStatus
 from app.models.user import User
 from app.schemas.recipe import RecipeListItem, RecipeStatusUpdate
+from app.schemas.trend import TrendRefreshResponse
+from app.services.trends import TrendsAdapterError
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -65,3 +68,33 @@ def update_recipe_status(
     db.commit()
     db.refresh(recipe)
     return RecipeListItem.model_validate(recipe)
+
+
+@router.post("/trends/refresh", response_model=TrendRefreshResponse)
+def refresh_trends_endpoint(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> TrendRefreshResponse:
+    """Trigger a one-shot refresh of the weekly trend snapshot.
+
+    Wraps ``app.jobs.refresh_trends.refresh_trends`` so the configured
+    ``TrendsAdapter`` decides where the data comes from (mock in dev/CI,
+    Naver DataLab when ``TRENDS_PROVIDER=live``).
+    """
+    _ = admin
+    try:
+        result = refresh_trends(db)
+    except TrendsAdapterError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "TRENDS_UPSTREAM_ERROR",
+                "message": str(exc),
+                "status": 502,
+            },
+        ) from exc
+    return TrendRefreshResponse(
+        week_of=result.week_of,
+        inserted=result.inserted,
+        updated=result.updated,
+    )
