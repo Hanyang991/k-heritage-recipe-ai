@@ -7,8 +7,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-import uuid
-from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -29,30 +27,6 @@ _DEMO_USER_EMAIL = "demo@k-heritage.app"
 _DEMO_USER_PASSWORD = "demo1234"
 _ADMIN_USER_EMAIL = "admin@k-heritage.app"
 _ADMIN_USER_PASSWORD = "admin1234"
-
-
-_TOP_KEYWORDS = [
-    ("쑥라떼", 32, True),
-    ("오미자에이드", 28, True),
-    ("흑임자크림", 19, True),
-    ("매실청소다", 15, True),
-    ("인절미케이크", 12, True),
-    ("한방차라떼", 10, True),
-    ("전통찻집", 8, True),
-    ("곶감스무디", 7, True),
-    ("유자청티", 5, True),
-    ("대추차", 4, True),
-    ("호박죽라떼", 3, True),
-    ("미숫가루", 2, True),
-    ("식혜빙수", 2, True),
-    ("생강차", 1, True),
-    ("수정과", 1, True),
-    ("떡카페", 1, False),
-    ("약과디저트", 2, False),
-    ("전통병과", 3, False),
-    ("한과세트", 4, False),
-    ("옛날과자", 5, False),
-]
 
 
 def seed_documents(db: Session) -> None:
@@ -79,25 +53,23 @@ def seed_documents(db: Session) -> None:
 
 
 def seed_trends(db: Session) -> None:
+    """Populate this week's trend snapshot via the configured discovery source.
+
+    Mock provider (dev/CI) is deterministic per-keyword so the dashboard boots
+    with a stable but discovery-shaped Top 20 from the ~80-keyword candidate
+    pool — no hardcoded list to fall out of sync with the live path.
+    """
     if db.query(Trend).count() > 0:
         logger.info("trends already seeded; skipping")
         return
-    today = date.today()
-    week_of = today - timedelta(days=today.weekday())  # Monday of this week
-    for rank, (kw, change, is_up) in enumerate(_TOP_KEYWORDS, start=1):
-        db.add(
-            Trend(
-                id=str(uuid.uuid4()),
-                keyword=kw,
-                rank=rank,
-                region="전국",
-                change_percent=float(change),
-                is_up=is_up,
-                week_of=week_of,
-            )
-        )
-    db.commit()
-    logger.info("seeded trends")
+    from app.jobs.refresh_trends import refresh_trends
+    from app.services.trends import TrendsAdapterError
+
+    try:
+        result = refresh_trends(db)
+        logger.info("seeded trends via discovery: %s", result)
+    except TrendsAdapterError as exc:
+        logger.warning("seed trends skipped (adapter error): %s", exc)
 
 
 def seed_users(db: Session) -> None:
@@ -140,21 +112,6 @@ def main() -> None:
         seed_users(db)
         logger.info("Demo account: %s / %s", _DEMO_USER_EMAIL, _DEMO_USER_PASSWORD)
         logger.info("Admin account: %s / %s", _ADMIN_USER_EMAIL, _ADMIN_USER_PASSWORD)
-
-        # When configured for live trends, replace this week's snapshot with
-        # real Naver DataLab data on top of the static seed so the dashboard
-        # boots with current numbers instead of last-month-frozen ones.
-        from app.config import get_settings
-
-        if get_settings().trends_provider == "live":
-            from app.jobs.refresh_trends import refresh_trends
-            from app.services.trends import TrendsAdapterError
-
-            try:
-                result = refresh_trends(db)
-                logger.info("live trends refresh: %s", result)
-            except TrendsAdapterError as exc:
-                logger.warning("live trends refresh skipped: %s", exc)
     finally:
         db.close()
 
