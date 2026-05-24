@@ -1,6 +1,8 @@
 """Admin review queue endpoints (spec section 8.2)."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_admin
@@ -9,8 +11,9 @@ from app.jobs.refresh_trends import refresh_trends
 from app.models.recipe import Recipe, RecipeStatus
 from app.models.user import User
 from app.schemas.recipe import RecipeListItem, RecipeStatusUpdate
-from app.schemas.trend import TrendRefreshResponse
-from app.services.trends import TrendsAdapterError
+from app.schemas.trend import TrendDebugResponse, TrendRefreshResponse
+from app.services.trends import TrendsAdapterError, get_trend_discovery
+from app.services.trends.debug import build_debug_response
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -98,3 +101,37 @@ def refresh_trends_endpoint(
         inserted=result.inserted,
         updated=result.updated,
     )
+
+
+@router.get("/trends/debug", response_model=TrendDebugResponse)
+def trends_debug_endpoint(
+    today: date | None = Query(
+        default=None,
+        description="Reference date (defaults to today). Useful for back-testing.",
+    ),
+    limit: int = Query(default=20, ge=1, le=200),
+    admin: User = Depends(get_current_admin),
+) -> TrendDebugResponse:
+    """Return a per-source breakdown of the currently configured discovery.
+
+    For ``TRENDS_DISCOVERY_SOURCE=open`` (``MultiSourceDiscovery``) this is
+    the *interesting* view: one provider row per registered source (static,
+    google_trends_daily, naver_news, llm_expansion) with raw candidate
+    count + sample + elapsed ms + error text, plus the merged ranked
+    top-N where each entry lists *all* sources that emitted it (not just
+    first-emitter attribution). For ``curated`` / ``shopping_insight`` we
+    synthesize one provider row from the ranked output.
+    """
+    _ = admin
+    try:
+        discovery = get_trend_discovery()
+    except TrendsAdapterError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "TRENDS_UPSTREAM_ERROR",
+                "message": str(exc),
+                "status": 502,
+            },
+        ) from exc
+    return build_debug_response(discovery, today=today, limit=limit)
