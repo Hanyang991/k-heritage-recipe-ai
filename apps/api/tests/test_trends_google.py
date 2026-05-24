@@ -150,3 +150,37 @@ def test_provider_returns_empty_when_every_keyword_is_on_denylist() -> None:
     with patch("httpx.Client.get") as get:
         get.return_value = _mock_response(200, _rss(raw))
         assert provider.discover_candidates() == []
+
+
+def test_provider_strips_known_noise_categories_end_to_end() -> None:
+    """Live-feed regression: real Google Trends KR entries from finance,
+    K-league football, KBO baseball, court, and military categories must
+    not bleed into the candidate list, while real food trends survive.
+    See ``test_trends_food_filter`` for full pattern coverage; this test
+    is just the integration assertion through the provider.
+    """
+    raw = [
+        # food — should survive
+        "쑥라떼",
+        "두바이쫀득쿠키",
+        "마라탕후루",
+        # finance noise
+        "가계부채 증가",
+        "GDP 성장률",
+        "실업률 발표",
+        # K-league + KBO noise (mixed case as observed in real RSS)
+        "용인 FC 대 충남 아산 FC",
+        "두산 베어스",
+        "LG 트윈스",
+        # court / politics noise
+        "검찰 압수수색",
+        "윤석열 탄핵",
+        # military noise
+        "우크라이나 전쟁",
+        "미사일 발사",
+    ]
+    provider = GoogleTrendsCandidateProvider()
+    with patch("httpx.Client.get") as get:
+        get.return_value = _mock_response(200, _rss(raw))
+        out = provider.discover_candidates()
+    assert out == ["쑥라떼", "두바이쫀득쿠키", "마라탕후루"]

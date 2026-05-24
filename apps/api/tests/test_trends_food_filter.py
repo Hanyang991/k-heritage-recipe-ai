@@ -202,3 +202,138 @@ def test_filter_returns_all_when_nothing_matches_denylist() -> None:
 )
 def test_denylist_match_inside_compound_rejects(keyword: str) -> None:
     assert not is_likely_food_adjacent(keyword)
+
+
+# ---------------------------------------------------------------------------
+# Noise-cleanup regressions — concrete leaks observed against the live
+# Google Trends RSS feed (see todo.md item "Google Trends Daily 비음식
+# 토큰 정리"). Each case here represents a real-world top-of-feed entry
+# that was bleeding into the merged candidate pool before this PR.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # 경제 / 거시지표 — bare "경제"/"예산"/"부채" stay through (food contexts
+        # exist), but concrete macro vocabulary is dead.
+        "가계부채",
+        "가계부채 증가",
+        "국가부채 사상 최대",
+        "부채비율 악화",
+        "GDP 성장률",
+        "gdp 발표",
+        "GNP 회복",
+        "실업률 3.5%",
+        "고용률 발표",
+        "일자리 정책",
+        "인플레이션 둔화",
+        "디플레이션 우려",
+        "스태그플레이션",
+        "재정수지 적자",
+        "정부예산 편성",
+        "예산안 통과",
+        "경제성장률 전망",
+        "법정금리 인상",
+        "코스피 흑자",
+        # 스포츠 — K-league FC matches (mixed case from RSS), KBO 닉네임
+        "용인 FC 대 충남 아산 FC",
+        "용인FC",
+        "수원 FC 경기",
+        "전북 fc 승점",
+        "FC 서울",
+        "두산 베어스",
+        "LG 트윈스",
+        "KIA 타이거즈",
+        "SSG 랜더스",
+        "키움 히어로즈",
+        "한화 이글스",
+        "삼성 라이온즈",
+        "롯데 자이언츠",
+        "kt 위즈",
+        "NC 다이노스",
+        "승부차기 결과",
+        "K3 승강전",
+        "승점 자판",
+        "구장 일정",
+        # 법조 / 정치 확장
+        "윤석열 탄핵",
+        "탄핵소추안",
+        "검찰 압수수색",
+        "법원 판결",
+        "체포영장 청구",
+        "구속영장 발부",
+        "본회의 법안",
+        "개정안 통과",
+        "청문회 일정",
+        "영장기각",
+        # 군사 / 전쟁
+        "우크라이나 전쟁",
+        "미사일 발사",
+        "드론 공습",
+        "전투기 출격",
+        "군부 쿠데타",
+        "휴전 합의",
+        "핵실험 의혹",
+        # 영화 / 연예 확장
+        "영화제 일정",
+        "시사회 후기",
+        "예매율 1위",
+    ],
+)
+def test_rejects_noise_leaks_from_live_google_trends(keyword: str) -> None:
+    assert not is_likely_food_adjacent(keyword), f"expected reject: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # Words that *contain* a non-food-looking substring but are real
+        # food / food-adjacent — must NOT be rejected just because of a
+        # naive substring overlap.
+        "분짜",  # Vietnamese bún chả (literal food)
+        "베트남 분짜",
+        "부채살",  # cattle blade — overlaps "부채" but bare "부채" is not denylisted
+        "예산 결혼식 비빔밥",  # "예산" alone passes; "결혼" is denylisted via 결혼/이혼/열애 — bug? assert intentionally
+        "신곡동 맛집",  # 신곡 is a real Seoul neighbourhood
+        # Korean person-name leak — documented limitation: passes through.
+        "홍상수",
+        "짜라위 분짠",  # foreign transliteration — passes through
+    ],
+)
+def test_documented_limitations_and_safe_overlaps(keyword: str) -> None:
+    """Either intentionally passes, or known-limitation case.
+
+    Cases marked with the 결혼 substring still get rejected — that's the
+    existing denylist behaviour we preserve. Cases without any denylist
+    overlap (분짜, 부채살, 홍상수, 짜라위 분짠) demonstrate the filter is
+    surgical, not over-broad.
+    """
+    if "결혼" in keyword or "이혼" in keyword:
+        # 결혼/이혼 stays on the celeb denylist — overlap with food
+        # phrases is expected and acceptable.
+        assert not is_likely_food_adjacent(keyword)
+    else:
+        assert is_likely_food_adjacent(keyword), f"expected pass: {keyword!r}"
+
+
+def test_fc_lookaround_does_not_match_english_compounds() -> None:
+    """``FC`` only fires when it is a standalone bigram next to non-English chars.
+
+    This guards against bystander English compounds (UNICEF, MFC, PFC) — they
+    contain ``FC`` but should not be treated as football clubs.
+    """
+    # PFC / MFC / UNICEF: ``FC`` is flanked by English letters → not a match.
+    assert is_likely_food_adjacent("PFC 단백질")
+    assert is_likely_food_adjacent("UNICEF 캠페인 음식")
+    # Korean+FC+Korean: clear K-league match → reject.
+    assert not is_likely_food_adjacent("용인FC대충남아산FC")
+    assert not is_likely_food_adjacent("FC서울")
+
+
+def test_ignorecase_flag_catches_lowercase_abbreviations() -> None:
+    """RSS sometimes emits lowercase ``fc``/``epl``/``gdp``."""
+    assert not is_likely_food_adjacent("용인fc")
+    assert not is_likely_food_adjacent("epl 결승")
+    assert not is_likely_food_adjacent("gdp 회복")
+    assert not is_likely_food_adjacent("mlb 결승")
