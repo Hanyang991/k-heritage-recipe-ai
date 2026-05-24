@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
 import {
   TrendingUp,
@@ -185,53 +185,68 @@ export function TrendDashboard() {
                       ? "text-[#3730A3]"
                       : "text-[#4B5563]";
 
+                const openDialog = () => setChartKeyword(trend.keyword);
+                const onTitleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openDialog();
+                  }
+                };
                 return (
                   <div
                     key={trend.rank}
-                    className={`${bgColor} border-2 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer flex flex-col`}
-                    onClick={() => setChartKeyword(trend.keyword)}
-                    title={`${trend.keyword} 시간순 트렌드 보기`}
+                    className={`${bgColor} border-2 rounded-lg p-4 hover:shadow-md transition-shadow flex flex-col`}
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <span className={`text-lg font-bold ${textColor}`}>
-                        #{trend.rank}
-                      </span>
-                      <div
-                        className={`flex items-center gap-1 text-xs ${
-                          trend.is_up ? "text-[#059669]" : "text-[#DC2626]"
-                        }`}
-                      >
-                        {trend.is_up ? (
-                          <ArrowUpRight className="w-3 h-3" />
-                        ) : (
-                          <ArrowDownRight className="w-3 h-3" />
-                        )}
-                        <span>{Math.round(trend.change_percent)}%</span>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="cursor-pointer rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3730A3]"
+                      onClick={openDialog}
+                      onKeyDown={onTitleKeyDown}
+                      aria-label={`${trend.keyword} 시간순 트렌드 보기`}
+                      title={`${trend.keyword} 시간순 트렌드 보기`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <span className={`text-lg font-bold ${textColor}`}>
+                          #{trend.rank}
+                        </span>
+                        <div
+                          className={`flex items-center gap-1 text-xs ${
+                            trend.is_up ? "text-[#059669]" : "text-[#DC2626]"
+                          }`}
+                        >
+                          {trend.is_up ? (
+                            <ArrowUpRight className="w-3 h-3" />
+                          ) : (
+                            <ArrowDownRight className="w-3 h-3" />
+                          )}
+                          <span>{Math.round(trend.change_percent)}%</span>
+                        </div>
+                      </div>
+                      <p className={`font-semibold ${textColor} mb-2`}>{trend.keyword}</p>
+                      <div className="mb-3">
+                        {(() => {
+                          const points = sparklines.get(trend.keyword);
+                          if (points === undefined) {
+                            return <Sparkline points={[]} width={140} height={28} />;
+                          }
+                          if (points === null || points.length < 2) {
+                            return (
+                              <div className="text-[10px] text-[#9CA3AF]">시계열 없음</div>
+                            );
+                          }
+                          return (
+                            <Sparkline
+                              points={points}
+                              width={140}
+                              height={28}
+                              color={trend.is_up ? "#059669" : "#DC2626"}
+                            />
+                          );
+                        })()}
                       </div>
                     </div>
-                    <p className={`font-semibold ${textColor} mb-2`}>{trend.keyword}</p>
-                    <div className="mb-3">
-                      {(() => {
-                        const points = sparklines.get(trend.keyword);
-                        if (points === undefined) {
-                          return <Sparkline points={[]} width={140} height={28} />;
-                        }
-                        if (points === null || points.length < 2) {
-                          return (
-                            <div className="text-[10px] text-[#9CA3AF]">시계열 없음</div>
-                          );
-                        }
-                        return (
-                          <Sparkline
-                            points={points}
-                            width={140}
-                            height={28}
-                            color={trend.is_up ? "#059669" : "#DC2626"}
-                          />
-                        );
-                      })()}
-                    </div>
-                    <div className="mt-auto flex items-center gap-2">
+                    <div className="mt-auto flex items-center gap-2 pt-1">
                       {user && (
                         <button
                           type="button"
@@ -250,10 +265,7 @@ export function TrendDashboard() {
                               ? "즐겨찾기 해제"
                               : "즐겨찾기 추가"
                           }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleFavorite(trend.keyword);
-                          }}
+                          onClick={() => toggleFavorite(trend.keyword)}
                         >
                           <Star
                             className="w-3.5 h-3.5"
@@ -266,10 +278,7 @@ export function TrendDashboard() {
                       <button
                         type="button"
                         className="flex items-center gap-1 text-[11px] text-[#4B5563] hover:text-[#3730A3]"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setChartKeyword(trend.keyword);
-                        }}
+                        onClick={openDialog}
                       >
                         <LineChartIcon className="w-3 h-3" />
                         그래프
@@ -277,10 +286,9 @@ export function TrendDashboard() {
                       <button
                         type="button"
                         className="ml-auto text-[11px] text-[#3730A3] hover:underline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate("/generate", { state: { keyword: trend.keyword } });
-                        }}
+                        onClick={() =>
+                          navigate("/generate", { state: { keyword: trend.keyword } })
+                        }
                       >
                         생성 →
                       </button>
