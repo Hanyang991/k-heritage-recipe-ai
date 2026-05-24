@@ -252,6 +252,12 @@ export interface TrendRefreshResponse {
   updated: number;
 }
 
+export interface FavoriteKeyword {
+  id: string;
+  keyword: string;
+  created_at: string;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -408,4 +414,17 @@ export const api = {
   },
   refreshTrendsSnapshot: () =>
     request<TrendRefreshResponse>("/admin/trends/refresh", { method: "POST" }),
+
+  // favorites
+  listFavoriteKeywords: () =>
+    request<FavoriteKeyword[]>("/private/me/favorite-keywords"),
+  addFavoriteKeyword: (keyword: string) =>
+    request<FavoriteKeyword>("/private/me/favorite-keywords", {
+      method: "POST",
+      body: JSON.stringify({ keyword }),
+    }),
+  removeFavoriteKeyword: (keyword: string) =>
+    request<void>(`/private/me/favorite-keywords/${encodeURIComponent(keyword)}`, {
+      method: "DELETE",
+    }),
 };
