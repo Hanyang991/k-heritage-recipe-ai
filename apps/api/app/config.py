@@ -25,6 +25,13 @@ class Settings(BaseSettings):
 
     llm_provider: Literal["mock", "live"] = "mock"
     heritage_provider: Literal["mock", "live"] = "mock"
+    # Which open-API source the live heritage adapter routes through.
+    # ``jangseogak`` (default) uses the 장서각 endpoint wired in PR #33;
+    # ``koreanstudies`` uses the 한국학자료포털 (kostma.aks.ac.kr) open
+    # API — see todo.md §1.3.1 for the broader source roadmap. Future
+    # additions (국립중앙도서관 / 국사편찬위 / 기호유학) will extend this
+    # Literal once their adapters land.
+    heritage_live_source: Literal["jangseogak", "koreanstudies"] = "jangseogak"
     payments_provider: Literal["mock", "live"] = "mock"
     trends_provider: Literal["mock", "live"] = "mock"
     trends_discovery_source: Literal["curated", "shopping_insight", "open"] = "curated"
@@ -50,6 +57,11 @@ class Settings(BaseSettings):
     # uses ``jangseogak_base_url`` and no auth header.
     jangseogak_api_key: str = ""
     jangseogak_base_url: str = "https://jsg.aks.ac.kr/api"
+    # 한국학자료포털 (한국학중앙연구원) open API: https://kostma.aks.ac.kr
+    # Fully open (no API key required), exposed via ``/OpenAPI/request.aspx``.
+    # The key field stays for forward-compatibility only.
+    koreanstudies_api_key: str = ""
+    koreanstudies_base_url: str = "https://kostma.aks.ac.kr"
     nfm_api_key: str = ""
     culture_api_key: str = ""
     toss_secret_key: str = ""
