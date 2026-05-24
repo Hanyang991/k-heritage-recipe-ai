@@ -44,7 +44,12 @@ class Settings(BaseSettings):
     trends_refresh_hour_utc: int = 18
 
     gemini_api_key: str = ""
+    # 장서각 Digital Archive Open API: https://jsg.aks.ac.kr/api/help
+    # The live endpoint is fully open (no API key required), so the key
+    # field stays for forward-compatibility only — the active live mode
+    # uses ``jangseogak_base_url`` and no auth header.
     jangseogak_api_key: str = ""
+    jangseogak_base_url: str = "https://jsg.aks.ac.kr/api"
     nfm_api_key: str = ""
     culture_api_key: str = ""
     toss_secret_key: str = ""

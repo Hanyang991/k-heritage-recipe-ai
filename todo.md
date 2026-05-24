@@ -48,7 +48,7 @@
 ### 1.3 고문헌 (§5, §7, §8.2.3)
 - [x] 키워드 + 기관 필터 검색 (`GET /v1/documents`)
 - [x] 시드 문서 (장서각 / 국립민속박물관 / 문화데이터광장 샘플)
-- [ ] **장서각 API 실연동** (`HERITAGE_PROVIDER=live`, `JANGSEOGAK_API_KEY`)
+- [x] **장서각 API 실연동** (PR #33) — `HERITAGE_PROVIDER=live` 로 `LiveHeritageAdapter` 활성화. `GET https://jsg.aks.ac.kr/api/search` 라이브 호출 (open API — 키 불필요. spec PDF §3.2 의 API Key 헤더 / `/api/v1/documents/search` 경로는 https://jsg.aks.ac.kr/api/help 와 다른 것을 확인). 한국어 응답 필드 (`자료명`/`유형분류`/`작성시기`/`청구기호`) 를 `HeritageDoc` 으로 정규화, `작성시기` 에서 `year` + `period` (조선전기/조선후기/근대) 자동 derive. `JangseogakAPIError` (404/429/timeout/connect/non-JSON) 시 `MockHeritageAdapter` 로 graceful fallback — empty result 는 정상 정보로 보존. 41 신규 테스트 (28 client + 13 adapter+factory).
 - [ ] **국립민속박물관 API 실연동** (`NFM_API_KEY`)
 - [ ] **문화데이터광장 API 실연동** (`CULTURE_API_KEY`)
 - [ ] **Vertex AI Vector Search** 임베딩 + 인덱싱 파이프라인

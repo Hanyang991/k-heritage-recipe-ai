@@ -102,10 +102,14 @@ pytest -v
 | --------- | -------------------- | ----------------------------- | -------------------------------------------- |
 | LLM       | `LLM_PROVIDER`       | Deterministic 3 candidates    | Gemini 2.5 Pro (requires `GEMINI_API_KEY`)   |
 | Trends    | `TRENDS_PROVIDER`    | Deterministic ratios          | Naver DataLab (`NAVER_DATALAB_CLIENT_ID/SECRET`) |
-| Heritage  | `HERITAGE_PROVIDER`  | 3 seed documents (음식디미방 etc.) | 장서각 / 국립민속박물관 / 문화데이터광장 (keys required) |
+| Heritage  | `HERITAGE_PROVIDER`  | 3 seed documents (음식디미방 etc.) | 장서각 Open API (no key — public); 국립민속박물관 / 문화데이터광장 still pending |
 | Payments  | `PAYMENTS_PROVIDER`  | Always succeeds, fake billing | TossPayments (`TOSS_SECRET_KEY` required)    |
 
-Live adapters for LLM / heritage / payments are scaffolded but raise `NotImplementedError` until wired — switching is a single env var change once keys are provided. The trends adapter is fully wired live.
+Live adapters for LLM / payments are scaffolded but raise `NotImplementedError` until wired — switching is a single env var change once keys are provided. The trends adapter is fully wired live; the heritage adapter is fully wired against 장서각 (the other two archives are queued for Phase 3 — see "Heritage live adapter" below).
+
+### Heritage live adapter (PR #33)
+
+`HERITAGE_PROVIDER=live` now routes through `LiveHeritageAdapter`, which calls the **장서각 Digital Archive Open API** at `GET https://jsg.aks.ac.kr/api/search`. This endpoint is fully open (no API key, no header auth — verified live against the published help page at <https://jsg.aks.ac.kr/api/help>), so the only knob is `JANGSEOGAK_BASE_URL` for pointing at staging mirrors. The response uses Korean field names (`자료명` / `유형분류` / `작성시기` / `청구기호`) which the adapter normalises into the existing `HeritageDoc` shape; `작성시기` is parsed into both a numeric `year` and a coarse `period` bucket (조선전기 ≤ 1592 / 조선후기 1593–1896 / 근대 ≥ 1897) so the recipe-generate prompt's period grounding stays consistent across mock and live. The adapter is resilient: any `JangseogakAPIError` (404, 429, timeout, connect failure, non-JSON body) triggers a graceful fallback to `MockHeritageAdapter`'s seeded matcher rather than failing the whole `/v1/private/recipes/generate` call — empty result sets are kept as-is (a real "the archive has nothing for this query" answer is information, not an error). Spec PDF §3.2 describes a different endpoint (`/api/v1/documents/search` with `q/category/period/page/size` and an API-key header); production traffic uses the live `/api/search` surface and the spec PDF will be refreshed separately. **국립민속박물관** + **문화데이터광장** adapters remain Phase 3 backlog (todo.md §1.3).
 
 ### Trend discovery pipeline
 
