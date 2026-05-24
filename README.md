@@ -144,6 +144,8 @@ For admin visibility, **`GET /v1/admin/trends/debug?today=YYYY-MM-DD&limit=N`** 
 
 **Broader macro / brand denylist** (PR #27): extends the same `food_filter` with five more categories that were observed leaking in live KR RSS — 정부 지출 (`교부금` / `보조금` / `지원금` / `재난지원금`), 세제 / 무역 (`무역수지` / `경상수지` / `수출액` / `관세인상` / `부가가치세` / `법인세` / `종부세`), 외국 자동차 브랜드 + 모델 (`테슬라` / `벤츠` / `BMW` / `사이버트럭` / `모델Y`…), 암호화폐 / 가상자산 (`비트코인` / `이더리움` / `업비트` / `NFT`…), and 항공우주 (`누리호` / `다누리` / `SpaceX` / `로켓발사`). The deliberate exclusions are just as important: bare `수출` would block legitimate food trends like `김치 수출` / `한국 농산물 수출`; bare `로켓` would block `로켓샐러드` (rocket leaves); bare `애플` would block `애플파이` / `애플망고`; bare `인스타` / `틱톡` / `유튜브` would block real food-on-social trends. We keep those out and rely on collision-safe compound forms (`수출액` / `로켓발사` / `애플워치` if added later). 100 새 테스트 가 reject 동작 + collision-safety 양쪽을 잠금.
 
+**Geographic / industry / 예능 / news-prose cleanup** (PR #28): closes four leak families that surfaced in the most recent live snapshot. (1) Bare country names anchored with `^…$` (`홍콩` / `대만` / `미국` / `일본` / `중국` / `프랑스`…) — compound forms like `홍콩식 디저트` still pass because the anchor only matches the bare token. (2) Bare industry / lifestyle categories (`뷰티` / `패션` / `명품` / `버킨백` / `게임` / `가전`) that were leaking from Shopping Insight cross-vertical feeds. (3) Korean variety / 예능 program names (`편스토랑` / `런닝맨` / `놀면 뭐하니`…) that the news provider picked up around tie-in product launches. (4) An extension of the PR #26 bare-name list (`박형룡` and ~10 other transliterated foreign names) plus a small news-prose stopword extension (`밝혔다` / `전했다`-style verb forms surfacing as standalone tokens from naver_news). 411 백엔드 테스트 그린 + 7 회귀 케이스 신규 추가.
+
 ### Production rollout (PR #19)
 
 To switch the dashboard from the static curated baseline to the full live multi-source pipeline, set the following in `apps/api/.env` (or your deployment's secret manager):
@@ -157,6 +159,8 @@ TRENDS_OPEN_LLM_ENABLED=true       # optional; daily ~$0.01 in Gemini cost
 GEMINI_API_KEY=...
 TRENDS_REFRESH_HOUR_UTC=18         # 18 UTC = 03 KST; new top-N ready by morning
 ```
+
+**Log redaction** (PR #29): `gemini_trends.py` installs a process-wide `httpx` log filter (`_httpx_log_redact.py`) on first use that rewrites `?key=…` query params to `?key=REDACTED` before they hit any handler. This applies to both string-formatted URLs and `httpx.URL` arg-record forms, is idempotent, and covers the `generativelanguage.googleapis.com` host that exposes the Gemini key in the URL itself. With this in place, raw `AIzaSy…` strings never appear in stdout / journald / log shipping — even at httpx `INFO` level. No action needed by operators; the filter is installed automatically when the Gemini provider is constructed.
 
 `docker compose up` will then bring up an additional **`trends_refresher`** sidecar that runs `python -m app.jobs.refresh_scheduler`. The scheduler is a minimal stdlib loop — it sleeps in 60-second chunks until the next scheduled hour and runs `refresh_trends` once per day. Each iteration's refresh is wrapped in try/except so one bad day (Gemini outage, Naver quota) does not crash the loop. Operators with their own scheduler (Kubernetes `CronJob`, host cron, GitHub Actions schedule, AWS EventBridge) can drop the `trends_refresher` service and invoke `python -m app.jobs.refresh_trends` directly on their preferred cadence.
 
