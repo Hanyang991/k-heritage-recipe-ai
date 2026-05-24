@@ -46,6 +46,25 @@ Token-extraction caveats
 - Length 2–12 is a pragmatic window that catches realistic compound noun
   trends (2: "쿠키"/"마라", 7: "두바이쫀득쿠키", 12: "흑임자크림브륄레")
   while ignoring single-char particles and sentence fragments.
+
+Noise reduction (PR ≥17)
+------------------------
+Live runs (PR #17 smoke) showed two systematic classes of noise leaking
+through the regex+denylist pipeline:
+
+1. **Document-frequency artifacts** — a single highly-repetitive article
+   could push a one-off token ("조내기") into the top-N just because the
+   reporter repeated it. We now track per-article *document frequency*
+   alongside raw token count and apply ``min_article_count`` (default 2):
+   a token must appear in at least 2 distinct articles to be kept.
+2. **Generic news/marketing vocabulary** — stopword-shape Korean tokens
+   ("있다", "더욱", "오늘의"), generic categories that match every
+   seed query ("디저트", "카페", "음료", "신메뉴"), and news-business
+   meta nouns ("브랜드", "트렌드", "출시", "운영") were dominating the
+   top-N even though they convey no trend information.
+   ``_KOREAN_NEWS_STOPWORDS`` is a conservative explicit denylist for
+   these. Specific food keywords ("아이스크림", "커피", "라떼") are NOT
+   in this list — they may be over-general but they are real food signal.
 """
 
 from __future__ import annotations
@@ -76,6 +95,115 @@ DEFAULT_SEED_QUERIES: tuple[str, ...] = (
     "한식 디저트",
 )
 
+# Hangul stopword-shape tokens that contribute no trend information.
+# Three categories, kept inline so the rationale is obvious in code:
+#
+# (a) Generic verbs/adverbs/adjectives that survived compound-noun
+#     extraction. Removing them avoids news-prose pollution.
+# (b) Time and place words — inherently non-food.
+# (c) Generic food-news vocabulary that matches every seed query and so
+#     trivially dominates frequency tallies ("디저트", "음료", "카페",
+#     "신메뉴") plus marketing/business meta-nouns ("브랜드", "트렌드",
+#     "출시"). These are real food-adjacent words but they are not
+#     *trends* — they are noise around the trends.
+_KOREAN_NEWS_STOPWORDS: frozenset[str] = frozenset(
+    {
+        # (a) verb/adverb/adjective residue
+        "있다",
+        "없다",
+        "있는",
+        "없는",
+        "한다",
+        "됐다",
+        "했다",
+        "본다",
+        "봤다",
+        "갔다",
+        "왔다",
+        "냈다",
+        "새롭게",
+        "더욱",
+        "같은",
+        "같이",
+        "함께",
+        "통해",
+        "위한",
+        "대한",
+        "모두",
+        "가장",
+        "정말",
+        "매우",
+        "오는",
+        "넘어",
+        "특히",
+        "또한",
+        "다양",
+        "다양한",
+        "새로운",
+        "만든",
+        "만든다",
+        # (b) time / place
+        "오늘",
+        "오늘의",
+        "어제",
+        "내일",
+        "이번",
+        "이번주",
+        "지난",
+        "다음",
+        "최근",
+        "현재",
+        "지금",
+        "올해",
+        "작년",
+        "내년",
+        "여름",
+        "겨울",
+        "가을",
+        "현지",
+        "국내",
+        "해외",
+        "전국",
+        # (c) generic news/marketing meta-vocabulary + seed-query terms
+        "디저트",
+        "음료",
+        "음식",
+        "요리",
+        "카페",
+        "메뉴",
+        "신메뉴",
+        "신상",
+        "인기",
+        "추천",
+        "베스트",
+        "브랜드",
+        "트렌드",
+        "출시",
+        "발표",
+        "공개",
+        "진행",
+        "운영",
+        "매장",
+        "가게",
+        "제품",
+        "회사",
+        "업체",
+        "이벤트",
+        "가격",
+        "할인",
+        "무료",
+        "맛집",
+        "경험",
+        "체험",
+        "시간",
+        "동안",
+        "이상",
+        "계속",
+        "투자",
+        "소비자",
+    }
+)
+
 
 class NaverNewsCandidateProvider:
     """``TrendCandidateProvider`` over the Naver Search News API."""
@@ -89,6 +217,7 @@ class NaverNewsCandidateProvider:
         *,
         seed_queries: tuple[str, ...] = DEFAULT_SEED_QUERIES,
         display_per_query: int = 50,
+        min_article_count: int = 2,
         base_url: str = "https://openapi.naver.com",
         timeout: float = 10.0,
     ) -> None:
@@ -96,6 +225,7 @@ class NaverNewsCandidateProvider:
         self._client_secret = client_secret or ""
         self._seed_queries = seed_queries
         self._display_per_query = max(1, min(100, display_per_query))
+        self._min_article_count = max(1, min_article_count)
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
 
@@ -118,10 +248,18 @@ class NaverNewsCandidateProvider:
             return []
         if not all_items:
             return []
-        counts = _extract_token_counts(all_items)
+        counts, dfs = _extract_token_counts_and_dfs(all_items)
         if not counts:
             return []
-        ranked = [kw for kw, _ in counts.most_common() if is_likely_food_adjacent(kw)]
+        ranked: list[str] = []
+        for kw, _ in counts.most_common():
+            if dfs[kw] < self._min_article_count:
+                continue
+            if kw in _KOREAN_NEWS_STOPWORDS:
+                continue
+            if not is_likely_food_adjacent(kw):
+                continue
+            ranked.append(kw)
         return ranked[:limit] if limit else ranked
 
     def _fetch_news(self, client: httpx.Client, query: str) -> list[dict[str, Any]]:
@@ -153,22 +291,31 @@ class NaverNewsCandidateProvider:
         return items if isinstance(items, list) else []
 
 
-def _extract_token_counts(items: list[dict[str, Any]]) -> Counter[str]:
-    """Count hangul compound-noun tokens across each article.
+def _extract_token_counts_and_dfs(
+    items: list[dict[str, Any]],
+) -> tuple[Counter[str], Counter[str]]:
+    """Return ``(total_freq, article_df)`` for the given article items.
+
+    ``total_freq`` counts every appearance of a token (title + description
+    summed). ``article_df`` counts each item at most once per token, which
+    is the figure the provider uses for its ``min_article_count`` cutoff
+    — a single ranty article repeating one phrase 20 times should not
+    qualify that phrase as "trending".
 
     Headline-level denylist check first: if the title contains a clearly
     non-food signal (태풍, 정상회담, 야구, ...) we skip the whole article so
     its innocent-looking sibling tokens (카눈, 북상, ...) don't bleed in.
-    Then per-token food-adjacency is applied by the caller to catch any
-    residual noise.
+    Per-token food-adjacency + stopword filtering happen at the caller.
     """
     counts: Counter[str] = Counter()
+    dfs: Counter[str] = Counter()
     for item in items:
         title = item.get("title")
         if isinstance(title, str):
             title_text = _HIGHLIGHT_RE.sub("", html.unescape(title))
             if not is_likely_food_adjacent(title_text):
                 continue
+        seen_in_item: set[str] = set()
         for field in ("title", "description"):
             text = item.get(field)
             if not isinstance(text, str):
@@ -176,4 +323,17 @@ def _extract_token_counts(items: list[dict[str, Any]]) -> Counter[str]:
             cleaned = _HIGHLIGHT_RE.sub("", html.unescape(text))
             for token in _HANGUL_TOKEN_RE.findall(cleaned):
                 counts[token] += 1
+                seen_in_item.add(token)
+        for token in seen_in_item:
+            dfs[token] += 1
+    return counts, dfs
+
+
+def _extract_token_counts(items: list[dict[str, Any]]) -> Counter[str]:
+    """Legacy thin wrapper returning only the total-frequency counter.
+
+    Tests assert on this shape; the provider uses
+    ``_extract_token_counts_and_dfs`` directly.
+    """
+    counts, _ = _extract_token_counts_and_dfs(items)
     return counts

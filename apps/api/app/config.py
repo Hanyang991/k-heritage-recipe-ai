@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     trends_open_naver_news_enabled: bool = True
     naver_news_seed_queries: str = "디저트 신상,K-디저트,신메뉴 카페,트렌드 음료,한식 디저트"
     naver_news_display_per_query: int = 50
+    naver_news_min_article_count: int = 2
     trends_open_llm_enabled: bool = False
     gemini_trends_model: str = "gemini-2.5-flash"
     gemini_trends_target_count: int = 30
