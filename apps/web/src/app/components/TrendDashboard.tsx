@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { TrendingUp, ArrowUpRight, ArrowDownRight, LineChart as LineChartIcon } from "lucide-react";
+import {
+  TrendingUp,
+  ArrowUpRight,
+  ArrowDownRight,
+  LineChart as LineChartIcon,
+  Star,
+  X,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { TrendSeriesDialog } from "./TrendSeriesDialog";
 import { Sparkline } from "./Sparkline";
 import { useTrendSparklines } from "../hooks/useTrendSparklines";
-import { api, RecipeListItem, Trend } from "@/lib/api";
+import { api, FavoriteKeyword, RecipeListItem, Trend } from "@/lib/api";
 import { useAuth } from "../auth/AuthContext";
 
 const REGIONS = ["전국", "서울", "경기", "전라북도", "경상남도", "충청남도", "강원", "제주"];
@@ -18,6 +25,11 @@ export function TrendDashboard() {
   const [trends, setTrends] = useState<Trend[] | null>(null);
   const [recentRecipes, setRecentRecipes] = useState<RecipeListItem[]>([]);
   const [chartKeyword, setChartKeyword] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<FavoriteKeyword[]>([]);
+  const favoriteSet = useMemo(
+    () => new Set(favorites.map((f) => f.keyword)),
+    [favorites],
+  );
 
   useEffect(() => {
     api.listTrends(region).then(setTrends).catch(() => setTrends([]));
@@ -30,12 +42,44 @@ export function TrendDashboard() {
   const sparklines = useTrendSparklines(trendKeywords, 4);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setRecentRecipes([]);
+      setFavorites([]);
+      return;
+    }
     api
       .listMyRecipes()
       .then((list) => setRecentRecipes(list.slice(0, 3)))
       .catch(() => setRecentRecipes([]));
+    api
+      .listFavoriteKeywords()
+      .then(setFavorites)
+      .catch(() => setFavorites([]));
   }, [user]);
+
+  const toggleFavorite = async (keyword: string) => {
+    if (!user) return;
+    const isFav = favoriteSet.has(keyword);
+    if (isFav) {
+      const prev = favorites;
+      setFavorites((curr) => curr.filter((f) => f.keyword !== keyword));
+      try {
+        await api.removeFavoriteKeyword(keyword);
+      } catch {
+        setFavorites(prev);
+      }
+    } else {
+      try {
+        const row = await api.addFavoriteKeyword(keyword);
+        setFavorites((curr) =>
+          curr.some((f) => f.keyword === keyword) ? curr : [row, ...curr],
+        );
+      } catch {
+        // swallow — a failed add leaves the UI in the unstarred state, which
+        // is consistent with what the backend believes.
+      }
+    }
+  };
 
   return (
     <div className="flex-1 overflow-auto bg-[#F9FAFB]">
@@ -69,6 +113,44 @@ export function TrendDashboard() {
             </Button>
           </div>
         </div>
+
+        {user && favorites.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-3">
+              <Star className="w-4 h-4 text-[#D97706]" fill="#D97706" />
+              <h2 className="text-[1rem] font-semibold text-[#111827]">
+                내 즐겨찾기 키워드
+              </h2>
+              <span className="text-xs text-[#9CA3AF]">({favorites.length})</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {favorites.map((fav) => (
+                <div
+                  key={fav.id}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FEF3C7] border border-[#FDE68A] rounded-full text-sm"
+                >
+                  <button
+                    type="button"
+                    className="font-medium text-[#92400E] hover:underline"
+                    onClick={() => setChartKeyword(fav.keyword)}
+                    title={`${fav.keyword} 시계열 보기`}
+                  >
+                    {fav.keyword}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-[#92400E]/70 hover:text-[#92400E]"
+                    onClick={() => toggleFavorite(fav.keyword)}
+                    aria-label={`${fav.keyword} 즐겨찾기 해제`}
+                    title="즐겨찾기 해제"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mb-10">
           <div className="flex items-center gap-2 mb-6">
@@ -150,6 +232,37 @@ export function TrendDashboard() {
                       })()}
                     </div>
                     <div className="mt-auto flex items-center gap-2">
+                      {user && (
+                        <button
+                          type="button"
+                          className={`flex items-center text-[11px] ${
+                            favoriteSet.has(trend.keyword)
+                              ? "text-[#D97706]"
+                              : "text-[#9CA3AF] hover:text-[#D97706]"
+                          }`}
+                          aria-label={
+                            favoriteSet.has(trend.keyword)
+                              ? `${trend.keyword} 즐겨찾기 해제`
+                              : `${trend.keyword} 즐겨찾기에 추가`
+                          }
+                          title={
+                            favoriteSet.has(trend.keyword)
+                              ? "즐겨찾기 해제"
+                              : "즐겨찾기 추가"
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavorite(trend.keyword);
+                          }}
+                        >
+                          <Star
+                            className="w-3.5 h-3.5"
+                            fill={
+                              favoriteSet.has(trend.keyword) ? "#D97706" : "none"
+                            }
+                          />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="flex items-center gap-1 text-[11px] text-[#4B5563] hover:text-[#3730A3]"

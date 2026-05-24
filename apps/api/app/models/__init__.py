@@ -4,6 +4,7 @@ Import every model here so Alembic / Base.metadata.create_all picks them up.
 """
 
 from app.models.document import Document
+from app.models.favorite_keyword import UserFavoriteKeyword
 from app.models.ingredient import Ingredient, RecipeIngredient
 from app.models.recipe import Recipe, RecipeStatus
 from app.models.subscription import Plan, Subscription
@@ -20,5 +21,6 @@ __all__ = [
     "Subscription",
     "Trend",
     "User",
+    "UserFavoriteKeyword",
     "UserRole",
 ]
