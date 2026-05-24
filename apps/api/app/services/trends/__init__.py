@@ -130,6 +130,7 @@ def get_trend_discovery() -> TrendKeywordDiscovery:
                     client_secret=settings.naver_datalab_client_secret,
                     seed_queries=seed_queries,
                     display_per_query=settings.naver_news_display_per_query,
+                    min_article_count=settings.naver_news_min_article_count,
                     base_url=settings.naver_datalab_base_url,
                 )
             )

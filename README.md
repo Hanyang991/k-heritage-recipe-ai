@@ -123,7 +123,7 @@ The weekly trend dashboard (`/v1/trends`) is fed by one of three discovery modes
 | --- | --- | --- | --- |
 | `static` | always on | Curated watchlist | Stable baseline keywords |
 | `google_trends_daily` | `TRENDS_OPEN_GOOGLE_ENABLED` | Google Trends RSS (`trends.google.com/trending/rss?geo=KR`) | Stdlib XML, no SDK |
-| `naver_news` | `TRENDS_OPEN_NAVER_NEWS_ENABLED` | Naver Search News compound-noun extraction (regex + frequency) | Reuses `NAVER_DATALAB_CLIENT_ID/SECRET` |
+| `naver_news` | `TRENDS_OPEN_NAVER_NEWS_ENABLED` | Naver Search News compound-noun extraction (regex + per-article df) | Reuses `NAVER_DATALAB_CLIENT_ID/SECRET`; df cutoff via `NAVER_NEWS_MIN_ARTICLE_COUNT` (default 2) |
 | `llm_expansion` | `TRENDS_OPEN_LLM_ENABLED` | Gemini 2.5 Flash JSON-schema response | Requires `GEMINI_API_KEY`; default off |
 
 The food filter is **denylist-only** (`app/services/trends/food_filter.py`) — it rejects clearly non-food categories (정치/스포츠/연예/IT 제품/부동산/금융/게임/의료) but accepts everything else, including completely novel concepts (두바이쫀득쿠키, 마라탕후루, 트러플오일). This is intentional: PR #15 LLM expansion can then suggest Korean-heritage variants like 두바이강정 / 두바이약과.
@@ -131,6 +131,8 @@ The food filter is **denylist-only** (`app/services/trends/food_filter.py`) — 
 For admin visibility, **`GET /v1/admin/trends/debug?today=YYYY-MM-DD&limit=N`** returns per-provider statistics (candidate count, sample of top-20 candidates, elapsed ms, error text if any) plus the merged ranked top-N with `all_sources` attribution per keyword. See `app/services/trends/debug.py`.
 
 **Resilience**: when `TRENDS_DISCOVERY_SOURCE=open` is combined with `TRENDS_PROVIDER=live`, the merged candidate pool fans out to many Naver DataLab requests. The DataLab adapter (`naver.py`) catches per-chunk transport errors and 5xx upstream errors, logs a warning, and skips just the failed chunk — 401 auth / 429 quota errors still abort the whole refresh as expected.
+
+**Naver News noise reduction** (PR #18): the `naver_news` provider applies two filters before ranking to keep the top-N free of generic news/marketing vocabulary. First, a per-article document-frequency cutoff (`NAVER_NEWS_MIN_ARTICLE_COUNT`, default 2) drops tokens that only appeared in a single article — a ranty article repeating one phrase no longer hijacks the trend list. Second, an explicit Korean stopword set strips news-prose residue (있다 / 더욱 / 오늘의), generic categories that match every seed query (디저트 / 카페 / 음료 / 신메뉴), and marketing meta-vocabulary (브랜드 / 트렌드 / 출시). Real food keywords like 아이스크림 / 커피 / 라떼 are *not* stopwords — they may be over-general but they are still legitimate signal.
 
 ## API surface (selected)
 

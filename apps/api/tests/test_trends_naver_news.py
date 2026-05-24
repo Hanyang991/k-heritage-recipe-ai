@@ -112,10 +112,13 @@ def test_provider_returns_empty_without_credentials() -> None:
 
 
 def test_provider_aggregates_across_seed_queries() -> None:
+    # ``min_article_count=1`` keeps this test focused on aggregation;
+    # production default is 2 and is covered by dedicated tests below.
     p = NaverNewsCandidateProvider(
         client_id="id",
         client_secret="secret",
         seed_queries=("디저트 신상", "트렌드 음료"),
+        min_article_count=1,
     )
     responses = {
         "디저트 신상": _payload(
@@ -139,7 +142,10 @@ def test_provider_aggregates_across_seed_queries() -> None:
 
 def test_provider_filters_via_food_filter() -> None:
     p = NaverNewsCandidateProvider(
-        client_id="id", client_secret="secret", seed_queries=("디저트 신상",)
+        client_id="id",
+        client_secret="secret",
+        seed_queries=("디저트 신상",),
+        min_article_count=1,
     )
     with patch("httpx.Client.get") as get:
         get.return_value = _mock_response(
@@ -178,7 +184,12 @@ def test_provider_sends_auth_headers_and_query_params() -> None:
 
 
 def test_provider_respects_limit() -> None:
-    p = NaverNewsCandidateProvider(client_id="id", client_secret="secret", seed_queries=("seed",))
+    p = NaverNewsCandidateProvider(
+        client_id="id",
+        client_secret="secret",
+        seed_queries=("seed",),
+        min_article_count=1,
+    )
     with patch("httpx.Client.get") as get:
         get.return_value = _mock_response(
             200,
@@ -218,6 +229,7 @@ def test_provider_continues_after_partial_query_failure() -> None:
         client_id="id",
         client_secret="secret",
         seed_queries=("query_ok", "query_500"),
+        min_article_count=1,
     )
     responses = {
         "query_ok": _mock_response(200, _payload([_item("쑥라떼 인기")])),
@@ -262,3 +274,131 @@ def test_display_per_query_is_clamped_to_min_one() -> None:
         get.return_value = _mock_response(200, _payload([]))
         p.discover_candidates()
         assert get.call_args.kwargs["params"]["display"] == "1"
+
+
+# ---------------------------------------------------------------------------
+# PR #18 noise reduction: stopwords + min_article_count
+# ---------------------------------------------------------------------------
+
+
+def test_provider_drops_stopword_shape_tokens_by_default() -> None:
+    """Generic Korean news/marketing words are filtered out before ranking."""
+    p = NaverNewsCandidateProvider(
+        client_id="id",
+        client_secret="secret",
+        seed_queries=("seed",),
+        min_article_count=1,
+    )
+    # Each stopword appears in every article, so on raw frequency they
+    # would all rank above 두바이쫀득쿠키. The default stopword set must remove them.
+    with patch("httpx.Client.get") as get:
+        get.return_value = _mock_response(
+            200,
+            _payload(
+                [
+                    _item("두바이쫀득쿠키 오늘의 디저트 브랜드 트렌드 신메뉴"),
+                    _item("두바이쫀득쿠키 오늘의 디저트 브랜드 트렌드 신메뉴"),
+                    _item("두바이쫀득쿠키 오늘의 디저트 브랜드 트렌드 신메뉴"),
+                ]
+            ),
+        )
+        out = p.discover_candidates()
+    assert "두바이쫀득쿠키" in out
+    for stopword in ("오늘의", "디저트", "브랜드", "트렌드", "신메뉴"):
+        assert stopword not in out, stopword
+
+
+def test_provider_keeps_real_food_terms_not_in_stopwords() -> None:
+    """Real food keywords like 아이스크림/커피/라떼 must survive — they are not stopwords."""
+    p = NaverNewsCandidateProvider(
+        client_id="id",
+        client_secret="secret",
+        seed_queries=("seed",),
+        min_article_count=1,
+    )
+    with patch("httpx.Client.get") as get:
+        get.return_value = _mock_response(
+            200,
+            _payload(
+                [
+                    _item("아이스크림 신상 출시"),
+                    _item("커피 트렌드 동향"),
+                    _item("라떼 인기"),
+                ]
+            ),
+        )
+        out = p.discover_candidates()
+    assert "아이스크림" in out
+    assert "커피" in out
+    assert "라떼" in out
+
+
+def test_provider_min_article_count_drops_single_article_tokens() -> None:
+    """A token that appears 20× in one article but 0 in others is dropped."""
+    p = NaverNewsCandidateProvider(
+        client_id="id",
+        client_secret="secret",
+        seed_queries=("seed",),
+        min_article_count=2,
+    )
+    with patch("httpx.Client.get") as get:
+        get.return_value = _mock_response(
+            200,
+            _payload(
+                [
+                    # 조내기 appears many times in this one article only.
+                    _item("조내기 조내기 조내기 조내기 조내기 두바이쫀득쿠키"),
+                    _item("두바이쫀득쿠키 후기"),
+                ]
+            ),
+        )
+        out = p.discover_candidates()
+    assert "두바이쫀득쿠키" in out  # df=2, kept
+    assert "조내기" not in out  # df=1, dropped despite high raw frequency
+
+
+def test_provider_min_article_count_default_is_two() -> None:
+    """Constructor default reflects production setting (df cutoff = 2)."""
+    p = NaverNewsCandidateProvider(
+        client_id="id",
+        client_secret="secret",
+        seed_queries=("seed",),  # single query so a token in one article = df 1
+    )
+    with patch("httpx.Client.get") as get:
+        get.return_value = _mock_response(200, _payload([_item("두바이쫀득쿠키 후기")]))
+        out = p.discover_candidates()
+    assert out == []
+
+
+def test_provider_min_article_count_clamps_below_one() -> None:
+    """Pathological min_article_count=0 should behave like 1, not crash."""
+    p = NaverNewsCandidateProvider(
+        client_id="id",
+        client_secret="secret",
+        seed_queries=("seed",),
+        min_article_count=0,
+    )
+    with patch("httpx.Client.get") as get:
+        get.return_value = _mock_response(200, _payload([_item("두바이쫀득쿠키")]))
+        out = p.discover_candidates()
+    assert "두바이쫀득쿠키" in out
+
+
+def test_extract_token_counts_and_dfs_distinguishes_total_vs_document_frequency() -> None:
+    from app.services.trends.naver_news import _extract_token_counts_and_dfs
+
+    counts, dfs = _extract_token_counts_and_dfs(
+        [
+            _item("쿠키 쿠키 쿠키 라떼"),  # 쿠키 ×3, 라떼 ×1
+            _item("쿠키 약과"),  # 쿠키 ×1, 약과 ×1
+            _item("약과 약과"),  # 약과 ×2
+        ]
+    )
+    # Total freq sums every occurrence.
+    assert counts["쿠키"] == 4
+    assert counts["라떼"] == 1
+    assert counts["약과"] == 3
+    # Document frequency counts each article at most once.
+    assert dfs["쿠키"] == 2  # in articles 1 and 2 only
+    assert dfs["라떼"] == 1  # in article 1 only
+    assert dfs["약과"] == 2  # in articles 2 and 3
