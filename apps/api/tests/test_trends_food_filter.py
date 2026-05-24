@@ -291,14 +291,13 @@ def test_rejects_noise_leaks_from_live_google_trends(keyword: str) -> None:
         # Words that *contain* a non-food-looking substring but are real
         # food / food-adjacent — must NOT be rejected just because of a
         # naive substring overlap.
-        "분짜",  # Vietnamese bún chả (literal food)
+        "분짜",  # Vietnamese bún chả (literal food). NOTE: a 1-char diff
+        # away from "분짠" — we add ``짜라위`` to the bare-name denylist
+        # rather than ``분짠`` itself, precisely to keep this case passing.
         "베트남 분짜",
         "부채살",  # cattle blade — overlaps "부채" but bare "부채" is not denylisted
         "예산 결혼식 비빔밥",  # "예산" alone passes; "결혼" is denylisted via 결혼/이혼/열애 — bug? assert intentionally
         "신곡동 맛집",  # 신곡 is a real Seoul neighbourhood
-        # Korean person-name leak — documented limitation: passes through.
-        "홍상수",
-        "짜라위 분짠",  # foreign transliteration — passes through
     ],
 )
 def test_documented_limitations_and_safe_overlaps(keyword: str) -> None:
@@ -306,8 +305,8 @@ def test_documented_limitations_and_safe_overlaps(keyword: str) -> None:
 
     Cases marked with the 결혼 substring still get rejected — that's the
     existing denylist behaviour we preserve. Cases without any denylist
-    overlap (분짜, 부채살, 홍상수, 짜라위 분짠) demonstrate the filter is
-    surgical, not over-broad.
+    overlap (분짜, 부채살, 신곡동 맛집) demonstrate the filter is surgical,
+    not over-broad.
     """
     if "결혼" in keyword or "이혼" in keyword:
         # 결혼/이혼 stays on the celeb denylist — overlap with food
@@ -315,6 +314,103 @@ def test_documented_limitations_and_safe_overlaps(keyword: str) -> None:
         assert not is_likely_food_adjacent(keyword)
     else:
         assert is_likely_food_adjacent(keyword), f"expected pass: {keyword!r}"
+
+
+# ---------------------------------------------------------------------------
+# Bare proper-name denylist (PR #26) — names that historically leaked into
+# the open-discovery candidate pool with no category cue. Documented
+# limitation from PR #20 ("Korean person-name leak — passes through") is
+# closed for the most frequently-leaked names.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # 영화감독 — PR #20 docstring's original "홍상수" example
+        "홍상수",
+        "박찬욱",
+        "봉준호",
+        "이창동",
+        "김지운",
+        # 가수 / K-pop solo
+        "지드래곤",
+        "박효신",
+        "임영웅",
+        # 정치인 (bare name without cue)
+        "이재명",
+        "한동훈",
+        "윤석열",
+        "한덕수",
+        # 야구 선수
+        "박찬호",
+        "류현진",
+        "오타니",
+        # 축구 선수
+        "손흥민",
+        "이강인",
+        "김민재",
+        # 골프
+        "박세리",
+        "고진영",
+        # 감독 — todo.md "홍상수 / 김상식 / 김대호 / 정해영" 사례
+        "김상식",
+        "김대호",
+        "정해영",
+        "허정무",
+        "클린스만",
+        # 예능 / MC
+        "유재석",
+        "강호동",
+        # 외국 인명 transliteration — PR #20 docstring's "짜라위 분짠"
+        "짜라위",
+        "짜라위 분짠",  # the original limitation example
+        "트럼프",
+        "푸틴 회담",  # paired with 회담 → denylist hits via 회담 anyway, but verify
+        "젤렌스키",
+        "시진핑",
+        "네타냐후",
+    ],
+)
+def test_rejects_bare_person_names(keyword: str) -> None:
+    """Bare names from `_BARE_PERSON_NAME_DENYLIST` (PR #26) are rejected."""
+    assert not is_likely_food_adjacent(keyword), f"expected reject: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # Food / location words that *share Korean surname syllables* with
+        # denylisted names — must NOT be over-rejected. These collisions
+        # are what we designed the 3+ syllable bare-name list around.
+        "홍어",  # shares 홍 with 홍상수
+        "홍어무침",
+        "박하",  # shares 박 with 박찬욱
+        "박하사탕",
+        "이밥",  # shares 이 with 이재명/이창동
+        "조청",  # shares 조 with no name in our list anyway
+        "정과",  # shares 정 with 정해영
+        "정한수",  # shares 정 with 정해영
+        "임실치즈",  # shares 임 with 임영웅
+        "강정",  # shares 강 with 강호동
+        "최정상의 약과",  # 최정 prefix — 2-char names intentionally excluded
+        "한과",  # shares 한 with 한동훈/한덕수
+        "한식",
+        "김치찌개",  # shares 김 with 김민재/김상식 등
+        "김밥",
+        "푸딩",  # shares 푸 with 푸틴 — 2-char names excluded for this reason
+        "분짜",  # 1 char diff from 분짠 — proves we denylisted 짜라위 not 분짠
+        # 호 / 환 surname syllables
+        "유자에이드",  # shares 유 with 유재석
+        "유자청",
+        # Korean compound words that contain a denylisted name as substring
+        # MUST be rare and intentional. None of the names we picked appear
+        # inside common food/location compounds.
+    ],
+)
+def test_bare_name_denylist_does_not_over_reject_food(keyword: str) -> None:
+    """Surname-syllable food words must pass — denylist is exact-name, not surname-prefix."""
+    assert is_likely_food_adjacent(keyword), f"expected pass: {keyword!r}"
 
 
 def test_fc_lookaround_does_not_match_english_compounds() -> None:
