@@ -31,17 +31,15 @@ PR #14 (Naver News) and PR #15 (LLM expansion) reuse this filter verbatim.
 
 Known limitations
 -----------------
-- **Bare Korean person names** (e.g. ``홍상수``, ``윤석열``, ``손흥민``)
-  cannot be rejected by category-pattern matching alone. They only get
-  caught when paired with a category cue (``홍상수 영화감독`` matches
-  ``감독``; ``손흥민 EPL`` matches ``EPL``). A future PR could ship a
-  curated celeb/politician/athlete name set, but the cost/benefit is
-  marginal — blended scoring against the Naver DataLab series already
-  sinks them, and PR #15's LLM expansion does not surface 한식 변형 for
-  bare proper names.
-- **Foreign (non-Korean) proper nouns** transliterated into Hangul
-  (``짜라위 분짠``, ``하리리``) share the same limitation. We avoid an
-  explicit name list and rely on downstream ranking instead.
+- **Bare proper names not in the maintained denylist.** Category-pattern
+  matching catches names paired with role cues (``홍상수 영화감독`` →
+  ``감독``; ``손흥민 EPL`` → ``EPL``), and the curated
+  ``_BARE_PERSON_NAME_DENYLIST`` below catches the most frequently-leaked
+  bare names (Korean film directors / politicians / athletes / foreign
+  transliterations). Brand-new names not yet on that list still pass
+  through. Blended scoring against the Naver DataLab series already sinks
+  most of them, and PR #15's LLM expansion does not surface 한식 변형 for
+  bare proper names — the curated list is belt-and-suspenders.
 """
 
 from __future__ import annotations
@@ -111,7 +109,107 @@ _FOOD_DENYLIST_PATTERNS: tuple[str, ...] = (
 )
 
 
-_DENYLIST_RE: re.Pattern[str] = re.compile("|".join(_FOOD_DENYLIST_PATTERNS), re.IGNORECASE)
+# Bare proper-name denylist — names that historically leaked into the
+# open-discovery candidate pool (Google Trends RSS, Naver News) without
+# a category cue like ``감독`` / ``의원`` / ``선수`` next to them. Each
+# entry is verified to be at least 3 syllables (avoids accidental
+# substring collisions like ``푸 + 딩``) and has no overlap with known
+# Korean food vocabulary (``홍상수`` does not substring-match ``홍어``;
+# ``박찬호`` does not substring-match ``박하``; etc.).
+#
+# Maintenance: when a new bare-name leak is observed in live RSS, add
+# it here. The downstream blended scorer + LLM expansion already filter
+# most of these naturally; this list is belt-and-suspenders so the
+# merged candidate pool stays clean even before scoring.
+#
+# Intentionally *not* included:
+# * 먹방 유튜버 (쯔양, 햄지 등) — they are legitimately food-adjacent.
+# * 2-syllable names — too high collision risk with Korean food words
+#   (e.g. ``푸틴`` could feasibly substring-match new compounds).
+# * Common Korean surname-only tokens (김, 이, 박 …) — would over-reject
+#   김치 / 박하사탕 / 이밥 etc.
+_BARE_PERSON_NAME_DENYLIST: tuple[str, ...] = (
+    # 영화감독 / 영화인
+    "홍상수",
+    "박찬욱",
+    "봉준호",
+    "이창동",
+    "김지운",
+    "류승완",
+    "허진호",
+    "장준환",
+    "임권택",
+    # 가수 / K-pop / 아이돌 (개인 이름 단독으로 자주 등장)
+    "지드래곤",
+    "박효신",
+    "임영웅",
+    "성시경",
+    "이찬원",
+    "장민호",
+    "박재범",
+    # 정치인 (bare names — 의원/대통령 cue 없이 자주 노출)
+    "이재명",
+    "한동훈",
+    "윤석열",
+    "이낙연",
+    "추미애",
+    "한덕수",
+    "원희룡",
+    "오세훈",
+    "이준석",
+    # 야구 선수
+    "박찬호",
+    "류현진",
+    "김광현",
+    "양현종",
+    "이정후",
+    "오타니",
+    "김하성",
+    # 축구 선수
+    "손흥민",
+    "이강인",
+    "김민재",
+    "황희찬",
+    "황의조",
+    # 골프 / 기타 종목
+    "박세리",
+    "고진영",
+    "김주형",
+    # 야구 / 농구 / 축구 감독 — todo.md "홍상수 / 김상식 / 김대호 / 정해영" 사례
+    "김상식",
+    "김대호",
+    "정해영",
+    "허정무",
+    "신태용",
+    "클린스만",
+    "유재학",
+    "전창진",
+    # MC / 예능인 (먹방 진행자는 의도적으로 제외)
+    "유재석",
+    "강호동",
+    "이수근",
+    "신동엽",
+    "김구라",
+    "전현무",
+    # 외국 인명 transliteration (Hangul) — PR #20 limitation
+    # ``짜라위 분짠`` 의 ``짜라위`` 만 추가하면 됨: ``분짠`` 은 식품 ``분짜``
+    # (Vietnamese bún chả) 와 1글자 차이라 substring 위험.
+    "짜라위",
+    "트럼프",
+    "젤렌스키",
+    "시진핑",
+    "기시다",
+    "이시바",
+    "네타냐후",
+    "에르도안",
+    "마크롱",
+)
+
+
+_DENYLIST_RE: re.Pattern[str] = re.compile(
+    "|".join((*_FOOD_DENYLIST_PATTERNS, *(re.escape(n) for n in _BARE_PERSON_NAME_DENYLIST))),
+    re.IGNORECASE,
+)
 
 
 def is_likely_food_adjacent(keyword: str) -> bool:
