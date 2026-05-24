@@ -57,6 +57,10 @@ from typing import Any
 
 import httpx
 
+from app.services.trends._httpx_log_redact import (
+    install_httpx_key_redaction,
+    redact_key_in_url,
+)
 from app.services.trends.food_filter import is_likely_food_adjacent
 
 logger = logging.getLogger(__name__)
@@ -88,6 +92,12 @@ class LLMExpansionCandidateProvider:
         self._target_count = max(1, min(100, target_count))
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        # ``httpx`` logs every request URL at INFO; the Gemini endpoint
+        # carries the API key as a ``key=`` query parameter (header auth
+        # is not supported), so without this filter every refresh would
+        # write the bare key to stdout. Idempotent — safe across
+        # repeated constructions in long-running processes / tests.
+        install_httpx_key_redaction()
 
     def discover_candidates(
         self,
@@ -101,7 +111,12 @@ class LLMExpansionCandidateProvider:
         try:
             raw = self._invoke(prompt)
         except (httpx.HTTPError, ValueError, KeyError) as exc:
-            logger.warning("gemini trend expansion failed: %s", exc)
+            # ``str(exc)`` from httpx sometimes embeds the full request
+            # URL (e.g. ConnectError messages, ``response.text`` snippets
+            # from non-200 paths) — pre-redact before logging so the
+            # key doesn't sneak through via the ``%s`` arg of *this*
+            # WARN log, which the ``httpx`` filter doesn't intercept.
+            logger.warning("gemini trend expansion failed: %s", redact_key_in_url(str(exc)))
             return []
         cleaned = _normalise(raw)
         ranked = [kw for kw in cleaned if is_likely_food_adjacent(kw)]
