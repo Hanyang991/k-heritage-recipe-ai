@@ -12,6 +12,7 @@ import { RecipeListPage } from "./pages/RecipeListPage";
 import { DocumentSearchPage } from "./pages/DocumentSearchPage";
 import { SubscriptionPage } from "./pages/SubscriptionPage";
 import { AdminPage } from "./pages/AdminPage";
+import { TrendsDebugPage } from "./pages/TrendsDebugPage";
 import { AuthProvider } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 
@@ -98,6 +99,14 @@ export default function App() {
               element={
                 <ProtectedRoute requireAdmin>
                   <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/trends/debug"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <TrendsDebugPage />
                 </ProtectedRoute>
               }
             />

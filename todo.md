@@ -42,7 +42,7 @@
 - [x] **Google Trends 비음식 토큰 cleanup** (PR #20) — `food_filter` denylist에 finance (가계부채/GDP/실업률/예산안/경제성장률), KBO/K-league (`FC` lookaround + 베어스/타이거즈/랜더스/트윈스 등 닉네임), 정치 입법 (법안/탄핵/청문회), 법조 (검찰/판결/체포영장/소송), 군사 (전쟁/미사일/드론), 영화제/시사회 카테고리 추가. `re.IGNORECASE` 활성화 (`mlb`/`fc`/`gdp` 소문자도 매칭). `신곡(?!동)` 좁힘 (신곡동 맛집 보존). 라이브 RSS에서 `가계부채` / `용인 fc 대 충남 아산 fc` / `mlb` reject 확인.
 - [ ] **bare 인명 사전** (다음 PR 후보 — `홍상수` / `김상식` / `김대호` / `정해영` 같이 카테고리 단서 없는 인물명 leak; allowlist-free 한계를 닫으려면 curated 인명 set 필요)
 - [ ] **broader macro/brand 노이즈** (다음 PR 후보 — `교부금` / `보조금` / `수출` 같은 거시 단어, `테슬라` 같은 글로벌 브랜드명 trend leak)
-- [ ] 어드민 React 페이지로 `/admin/trends/debug` 시각화 (sparkline, source venn)
+- [x] **어드민 React 페이지** (PR #22) — `/admin/trends/debug` 시각화: 기준일 picker + limit selector, `discovery_type / unique_candidates / scored` 메타 stat 카드, 소스별 카드 (`name / candidate_count / elapsed_ms / error / sample chips`), 병합 랭킹 테이블 (키워드 · `all_sources` 칩 · score · current_ratio · rise%), `POST /v1/admin/trends/refresh` 즉시 갱신 버튼 포함. 사이드바 "트렌드 디버그" 항목 신규. 스파크라인/source venn은 다음 PR 후보로 이월.
 
 ### 1.3 고문헌 (§5, §7, §8.2.3)
 - [x] 키워드 + 기관 필터 검색 (`GET /v1/documents`)
@@ -121,6 +121,7 @@
 - [x] `/documents` — 키워드 + 기관 검색
 - [x] `/subscription` — 3개 플랜 카드 + 현재 플랜
 - [x] `/admin` — 검수 큐 (관리자 전용)
+- [x] `/admin/trends/debug` — 트렌드 파이프라인 소스별 통계 + 병합 랭킹 시각화 (관리자 전용, PR #22)
 - [x] **`/onboarding`** — 가입 직후 사용자 페르소나 / 선호 지역 / 키워드 설정 (§8.2.1)
 - [ ] `/profile` — 사용자 정보 / 비밀번호 변경
 - [ ] `/recipes/:id/edit` — 레시피 직접 편집

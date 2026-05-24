@@ -5,6 +5,7 @@ import {
   BookOpen,
   CreditCard,
   ShieldCheck,
+  LineChart,
   User,
   LogIn,
   LogOut,
@@ -31,7 +32,10 @@ export function Sidebar() {
     : [];
 
   const adminItems = user?.role === "admin"
-    ? [{ icon: ShieldCheck, label: "관리자", path: "/admin" }]
+    ? [
+        { icon: ShieldCheck, label: "관리자", path: "/admin" },
+        { icon: LineChart, label: "트렌드 디버그", path: "/admin/trends/debug" },
+      ]
     : [];
 
   const navItems = [...baseItems, ...userItems, ...adminItems];
