@@ -19,6 +19,7 @@ from app.routers import (
     auth,
     documents,
     favorites,
+    notifications,
     payments,
     recipes,
     subscription,
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(payments.router, prefix=api_v1)
     app.include_router(users.router, prefix=api_v1)
     app.include_router(favorites.router, prefix=api_v1)
+    app.include_router(notifications.router, prefix=api_v1)
     app.include_router(admin.router, prefix=api_v1)
 
     @app.get("/healthz", tags=["meta"])

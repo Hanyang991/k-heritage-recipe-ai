@@ -131,6 +131,16 @@ def refresh_trends(
         inserted,
         updated,
     )
+
+    # Notification detection is best-effort — a failure here must not roll
+    # back the trend snapshot we just committed.
+    try:
+        from app.services.notifications import detect_favorite_keyword_notifications
+
+        detect_favorite_keyword_notifications(db, week_of=week_of, region=region)
+    except Exception:
+        logger.exception("favorite-keyword notification detection failed")
+
     return RefreshResult(week_of=week_of, inserted=inserted, updated=updated)
 
 

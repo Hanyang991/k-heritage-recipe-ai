@@ -258,6 +258,28 @@ export interface FavoriteKeyword {
   created_at: string;
 }
 
+export type NotificationType = "favorite_keyword_trending";
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  payload: {
+    keyword?: string;
+    rank?: number;
+    previous_rank?: number | null;
+    change_percent?: number;
+    week_of?: string;
+    [k: string]: unknown;
+  };
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface NotificationListResponse {
+  items: NotificationItem[];
+  unread_count: number;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -426,5 +448,19 @@ export const api = {
   removeFavoriteKeyword: (keyword: string) =>
     request<void>(`/private/me/favorite-keywords/${encodeURIComponent(keyword)}`, {
       method: "DELETE",
+    }),
+
+  // notifications
+  listNotifications: (unreadOnly = false) => {
+    const qs = unreadOnly ? "?unread_only=true" : "";
+    return request<NotificationListResponse>(`/private/me/notifications${qs}`);
+  },
+  markNotificationRead: (id: string) =>
+    request<NotificationItem>(`/private/me/notifications/${id}/read`, {
+      method: "POST",
+    }),
+  markAllNotificationsRead: () =>
+    request<{ marked_read: number }>("/private/me/notifications/read-all", {
+      method: "POST",
     }),
 };

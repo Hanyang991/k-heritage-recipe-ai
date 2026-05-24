@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
+import { NotificationBell } from "./NotificationBell";
 
 export function Sidebar() {
   const location = useLocation();
@@ -88,6 +89,7 @@ export function Sidebar() {
                 {planLabel}
               </span>
             </div>
+            <NotificationBell />
             <button
               type="button"
               onClick={logout}
