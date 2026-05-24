@@ -15,10 +15,11 @@ Two layers, both swappable via env vars:
 Mock mode for shopping_insight reuses ``MockTrendsAdapter`` so dev/CI never
 needs Naver credentials; only ``TRENDS_PROVIDER=live`` activates the live
 shopping insight endpoint. ``open`` discovery providers (Google Trends RSS,
-Naver Search News, and the upcoming LLM expansion) make their own HTTP calls
-and degrade to zero candidates on any failure so the refresh job stays
-robust. The Naver News provider reuses the same client credentials as
-Datalab — the Naver Developers app just needs the "검색" service enabled.
+Naver Search News, Gemini LLM expansion) make their own HTTP calls and
+degrade to zero candidates on any failure so the refresh job stays robust.
+Naver News reuses the same client credentials as Datalab (the app just
+needs the "검색" service enabled); the LLM provider needs
+``GEMINI_API_KEY`` and is off by default since each call costs money.
 """
 
 from functools import lru_cache
@@ -40,6 +41,7 @@ from app.services.trends.discovery import (
     TrendKeywordDiscovery,
 )
 from app.services.trends.food_filter import filter_food_adjacent, is_likely_food_adjacent
+from app.services.trends.gemini_trends import LLMExpansionCandidateProvider
 from app.services.trends.google_trends import GoogleTrendsCandidateProvider
 from app.services.trends.mock import MockTrendsAdapter
 from app.services.trends.multi_source import MultiSourceDiscovery
@@ -81,7 +83,7 @@ def get_trend_discovery() -> TrendKeywordDiscovery:
       need network or credentials.
     - ``open``: ``MultiSourceDiscovery`` over the curated static watchlist
       plus enabled open-discovery providers (Google Trends RSS, Naver
-      Search News, and LLM expansion in PR #15). Open providers degrade to
+      Search News, and Gemini LLM expansion). Open providers degrade to
       zero candidates on failure; series fetching uses the same adapter as
       ``curated`` so the upstream Naver toggle still applies.
     """
@@ -127,6 +129,15 @@ def get_trend_discovery() -> TrendKeywordDiscovery:
                     base_url=settings.naver_datalab_base_url,
                 )
             )
+        if settings.trends_open_llm_enabled:
+            providers.append(
+                LLMExpansionCandidateProvider(
+                    api_key=settings.gemini_api_key,
+                    model=settings.gemini_trends_model,
+                    target_count=settings.gemini_trends_target_count,
+                    base_url=settings.gemini_trends_base_url,
+                )
+            )
         return MultiSourceDiscovery(get_trends_adapter(), providers)
 
     return CuratedWatchlistDiscovery(get_trends_adapter())
@@ -137,6 +148,7 @@ __all__ = [
     "DiscoveredKeyword",
     "FOOD_CATEGORY_CODE",
     "GoogleTrendsCandidateProvider",
+    "LLMExpansionCandidateProvider",
     "MultiSourceDiscovery",
     "NaverNewsCandidateProvider",
     "NaverShoppingInsightAdapter",
