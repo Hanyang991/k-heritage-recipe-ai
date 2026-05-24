@@ -55,12 +55,7 @@
 Spec PDF §3.1 은 장서각 + 국립민속박물관 + 문화데이터광장 3개 기관만 명시하지만, 실제 한국 고문헌·역사·전통문화 영역에는 더 폭넓고 품질 좋은 공개 데이터셋이 있어 활용 가능한 소스를 확장한다. 아래 4개 소스가 위의 NFM / 문화데이터광장보다 우선순위가 높음.
 
 - [x] **한국학자료포털 (한국학중앙연구원) Open API** — `HERITAGE_PROVIDER=live` + `HERITAGE_LIVE_SOURCE=koreanstudies` 로 `LiveKoreanstudiesAdapter` 활성화. `GET http://kostma.aks.ac.kr/OpenAPI/request.aspx` 라이브 호출 (open API — 키 불필요, 장서각과 동일). 응답이 JSON 이 아닌 **XML** 이라 `<ksm>/<items>/<item>` 구조 + `<기본정보>/<분류>/<작성지역>/<작성시기>` 한국어 태그를 `KoreanstudiesSearchResult` → `HeritageDoc` 으로 정규화. `작성지역 @현재주소` 가 있어 장서각 대비 region 데이터가 풍부함 (장서각은 region 정보를 search response 에 노출 안 함). period bucket (조선전기 ≤ 1592 / 조선후기 1593–1896 / 근대 ≥ 1897) 은 장서각과 동일 — 추후 multi-source fan-in 시 score 비교 가능. detail=1 (기본정보) 이 기본값, detail=2 (안내정보) 로 표제어/문단 summary 확장 가능. `KoreanstudiesAPIError` (404/429/timeout/connect/non-XML/unexpected-root) 시 `MockHeritageAdapter` 로 graceful fallback (장서각 패턴 그대로). 53 신규 테스트 (26 client/parser + 23 adapter + 4 factory routing). 운영기관: 한국학중앙연구원 (장서각과 동일 기관). 제공 데이터: 전국 권역 수집 고문헌·고문서 문헌정보, 고지도, **디지털 고문헌 용례사전**.
-- [ ] **국립중앙도서관 Open API**
-  - 운영기관: 국립중앙도서관 (NLK)
-  - 제공 데이터: 국가자료종합목록 (KOLIS-NET), 한국고문헌종합목록 (KORCIS), 디지털화 원문 고문헌 이미지/텍스트 서지정보
-  - 활용 포인트: 가장 광범위한 표준 서지 데이터 — `systemType=온라인자료` 옵션으로 디지털 원문 링크까지 수집 가능
-  - 어댑터 위치 예정: `app/services/heritage/nlk.py`
-  - 환경변수 예정: `NLK_API_KEY`, `NLK_BASE_URL`
+- [x] **국립중앙도서관 (NLK) Open API** — `HERITAGE_PROVIDER=live` + `HERITAGE_LIVE_SOURCE=nlk` + `NLK_API_KEY=<발급키>` 으로 `LiveNlkAdapter` 활성화. `GET https://www.nl.go.kr/NL/search/openApi/search.do` (장서각/한국학자료포털과 달리 **인증키 필수** — 신청 위치 https://www.nl.go.kr/NL/contents/N31101030500.do, admin approval 필요). XML 응답 (`<channel>/<list>/<item>`) 을 `NlkSearchResult` → `HeritageDoc` 으로 정규화 — `control_no` 는 KORCIS-stable identifier 라 후속 multi-source fan-in 의 dedupe anchor 로 사용 예정. `category=고문헌` 가 기본값 (heritage adapter 이므로). `pub_year_info` 가 `"2012"` / `"201201"` / `"순조 14년(1814년)"` 3가지 shape 을 모두 지원 (장서각/한국학자료포털과 동일한 4-digit regex + period bucket). NLK 가 search response 에 region 을 노출하지 않아 region 필터는 no-op (KDC 분류명 + 청구기호는 summary 에 fold-in). `NlkAPIError` 는 upstream `<error_code>` (010 NO KEY / 011 INVALID KEY / 012 DATA LIMIT 500 / 013 CATEGORY / 014 PARAMETER) 를 `.error_code` 로 노출해 로그에서 auth 문제와 transient 장애를 구별 가능. **키 없을 때**: 팩토리가 `MockHeritageAdapter` 로 자동 degrade (`HERITAGE_LIVE_SOURCE=nlk` 여도 boot 실패 안 함) — 키 도착 후 `.env` 만 업데이트하면 즉시 라이브. 운영기관: 국립중앙도서관 (NLK). 제공 데이터: 국가자료종합목록 (KOLIS-NET), **한국고문헌종합목록 (KORCIS)** — 가장 광범위한 표준 서지 데이터.
 - [ ] **국사편찬위원회 Open API (공공데이터포털 경유)**
   - 운영기관: 국사편찬위원회
   - 제공 데이터: 한국역사자료 메타데이터 (역사 인물, 연표/사건 시간선, 연구자료), 귀중본 목록

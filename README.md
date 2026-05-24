@@ -113,16 +113,21 @@ Live adapters for LLM / payments are scaffolded but raise `NotImplementedError` 
 
 **Additional heritage sources (planned, todo.md §1.3.1)**: rather than the spec's original 국립민속박물관 + 문화데이터광장 pairing, the project is moving toward four higher-value Korean cultural-heritage open APIs — 한국학자료포털 (한국학중앙연구원, 장서각 자매 포털: 권역별 고문헌 + 용례사전), 국립중앙도서관 (KOLIS-NET / KORCIS 표준 서지), 국사편찬위원회 (인물·연표 메타데이터), 기호유학 고문헌 통합정보시스템 (충남대, 충청 지역 특화). Each will get its own `*Adapter (HeritageAdapter)` + `*SearchClient` under `app/services/heritage/`, then a `MultiSourceHeritageAdapter` fans them in with dedupe + per-source error isolation (same pattern as the trends `MultiSourceDiscovery`).
 
-### Heritage live source: 한국학자료포털
+### Heritage live sources matrix
 
-The first source from the todo.md §1.3.1 expansion is now live. `HERITAGE_LIVE_SOURCE` selects which open-API source the live adapter routes through:
+`HERITAGE_LIVE_SOURCE` selects which open-API source the live adapter routes through. todo.md §1.3.1 is rolling these out incrementally; the next two (국사편찬위 + 기호유학) will extend the same matrix:
 
-| Value | Adapter | Endpoint | API key |
-| --- | --- | --- | --- |
-| `jangseogak` (default) | `LiveHeritageAdapter` | `https://jsg.aks.ac.kr/api/search` | none (open) |
-| `koreanstudies` | `LiveKoreanstudiesAdapter` | `https://kostma.aks.ac.kr/OpenAPI/request.aspx` | none (open) |
+| Value | Adapter | Endpoint | Format | API key |
+| --- | --- | --- | --- | --- |
+| `jangseogak` (default) | `LiveHeritageAdapter` | `https://jsg.aks.ac.kr/api/search` | JSON | none (open) |
+| `koreanstudies` | `LiveKoreanstudiesAdapter` | `https://kostma.aks.ac.kr/OpenAPI/request.aspx` | XML | none (open) |
+| `nlk` | `LiveNlkAdapter` | `https://www.nl.go.kr/NL/search/openApi/search.do` | XML | **`NLK_API_KEY` required** |
 
-The 한국학자료포털 (한국학중앙연구원) endpoint is the sister portal to 장서각 — same operating org, but covers 권역별 (regional) and 민간 (private collections) high-resolution materials instead of the royal archive that 장서각 indexes. The adapter is XML-based (장서각 is JSON), and `KoreanstudiesSearchClient` parses the `<ksm>` envelope into the same `HeritageDoc` shape that recipe-generate already consumes — so switching `HERITAGE_LIVE_SOURCE` is a single env var flip with no schema change downstream. Period bucketing (조선전기 / 조선후기 / 근대) uses the same boundaries (1592 / 1897) as 장서각 for cross-source consistency. Region is populated from `작성지역 @현재주소` (a richer signal than 장서각, which doesn't expose 지역 in its search response). On any `KoreanstudiesAPIError` the adapter degrades gracefully to the mock matcher, identical to the 장서각 contract. Override the base URL via `KOREANSTUDIES_BASE_URL` for staging mirrors.
+**한국학자료포털 (PR #35).** Sister portal to 장서각 — same operating org (한국학중앙연구원), but covers 권역별 (regional) and 민간 (private collections) high-resolution materials instead of the royal archive that 장서각 indexes. The adapter is XML-based (장서각 is JSON), and `KoreanstudiesSearchClient` parses the `<ksm>` envelope into the same `HeritageDoc` shape that recipe-generate already consumes. Region is populated from `작성지역 @현재주소` (a richer signal than 장서각, which doesn't expose 지역 in its search response).
+
+**국립중앙도서관 / NLK (this PR).** The standardised national-scale source — operator of **KORCIS** (한국고문헌종합목록, federated catalogue of 고전적 across every Korean institution) and **KOLIS-NET** (국가자료종합목록). KORCIS records expose a `control_no` that is stable across institutions, which is what makes NLK the natural dedupe anchor for the planned `MultiSourceHeritageAdapter`. The endpoint requires an API key (apply at <https://www.nl.go.kr/NL/contents/N31101030500.do>, admin approval) — when `NLK_API_KEY` is unset the factory transparently degrades to the mock matcher even with `HERITAGE_LIVE_SOURCE=nlk` set, so recipe-generate stays available while the key is being provisioned. The adapter defaults `category=고문헌` since this is a heritage stack, parses both modern (`"2012"` / `"201201"`) and 고문헌-style (`"순조 14년(1814년)"`) `pub_year_info` shapes, and surfaces upstream `<error_code>` codes (010 / 011 / 012 / 013 / 014) on `NlkAPIError` so auth issues can be distinguished from transient outages in logs.
+
+All three adapters share identical period bucketing (조선전기 ≤ 1592 / 조선후기 1593–1896 / 근대 ≥ 1897) and identical rank-decay (top hit ≈ 0.94 → floor 0.40), so cross-source result blending will not require renormalising scores. All three degrade gracefully to `MockHeritageAdapter` on transport failures, upstream error envelopes, or unparseable bodies.
 
 ### Trend discovery pipeline
 
