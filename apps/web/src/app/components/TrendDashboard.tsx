@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { TrendingUp, ArrowUpRight, ArrowDownRight, LineChart as LineChartIcon } from "lucide-react";
 import { Button } from "./ui/button";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { TrendSeriesDialog } from "./TrendSeriesDialog";
+import { Sparkline } from "./Sparkline";
+import { useTrendSparklines } from "../hooks/useTrendSparklines";
 import { api, RecipeListItem, Trend } from "@/lib/api";
 import { useAuth } from "../auth/AuthContext";
 
@@ -20,6 +22,12 @@ export function TrendDashboard() {
   useEffect(() => {
     api.listTrends(region).then(setTrends).catch(() => setTrends([]));
   }, [region]);
+
+  const trendKeywords = useMemo(
+    () => trends?.map((t) => t.keyword) ?? [],
+    [trends],
+  );
+  const sparklines = useTrendSparklines(trendKeywords, 4);
 
   useEffect(() => {
     if (!user) return;
@@ -119,7 +127,28 @@ export function TrendDashboard() {
                         <span>{Math.round(trend.change_percent)}%</span>
                       </div>
                     </div>
-                    <p className={`font-semibold ${textColor} mb-3`}>{trend.keyword}</p>
+                    <p className={`font-semibold ${textColor} mb-2`}>{trend.keyword}</p>
+                    <div className="mb-3">
+                      {(() => {
+                        const points = sparklines.get(trend.keyword);
+                        if (points === undefined) {
+                          return <Sparkline points={[]} width={140} height={28} />;
+                        }
+                        if (points === null || points.length < 2) {
+                          return (
+                            <div className="text-[10px] text-[#9CA3AF]">시계열 없음</div>
+                          );
+                        }
+                        return (
+                          <Sparkline
+                            points={points}
+                            width={140}
+                            height={28}
+                            color={trend.is_up ? "#059669" : "#DC2626"}
+                          />
+                        );
+                      })()}
+                    </div>
                     <div className="mt-auto flex items-center gap-2">
                       <button
                         type="button"
