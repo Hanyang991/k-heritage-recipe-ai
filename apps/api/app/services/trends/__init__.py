@@ -44,7 +44,11 @@ from app.services.trends.food_filter import filter_food_adjacent, is_likely_food
 from app.services.trends.gemini_trends import LLMExpansionCandidateProvider
 from app.services.trends.google_trends import GoogleTrendsCandidateProvider
 from app.services.trends.mock import MockTrendsAdapter
-from app.services.trends.multi_source import MultiSourceDiscovery
+from app.services.trends.multi_source import (
+    MultiSourceBreakdown,
+    MultiSourceDiscovery,
+    ProviderBreakdown,
+)
 from app.services.trends.naver import NaverDatalabAdapter
 from app.services.trends.naver_news import DEFAULT_SEED_QUERIES, NaverNewsCandidateProvider
 from app.services.trends.shopping_insight import (
@@ -149,10 +153,12 @@ __all__ = [
     "FOOD_CATEGORY_CODE",
     "GoogleTrendsCandidateProvider",
     "LLMExpansionCandidateProvider",
+    "MultiSourceBreakdown",
     "MultiSourceDiscovery",
     "NaverNewsCandidateProvider",
     "NaverShoppingInsightAdapter",
     "NaverShoppingInsightDiscovery",
+    "ProviderBreakdown",
     "StaticCandidateProvider",
     "TrendCandidateProvider",
     "TrendDataPoint",
