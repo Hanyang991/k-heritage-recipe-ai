@@ -54,12 +54,7 @@
 
 Spec PDF §3.1 은 장서각 + 국립민속박물관 + 문화데이터광장 3개 기관만 명시하지만, 실제 한국 고문헌·역사·전통문화 영역에는 더 폭넓고 품질 좋은 공개 데이터셋이 있어 활용 가능한 소스를 확장한다. 아래 4개 소스가 위의 NFM / 문화데이터광장보다 우선순위가 높음.
 
-- [ ] **한국학자료포털 (한국학중앙연구원) Open API**
-  - 운영기관: 한국학중앙연구원 (장서각과 동일 기관 — 인증/계약 단일화 용이)
-  - 제공 데이터: 전국 권역 수집 고문헌·고문서 문헌정보, 고지도, **디지털 고문헌 용례사전** (까다로운 고어/한자 용어 풀이 — 레시피 생성 프롬프트의 grounding context 강화에 매우 유용)
-  - 차이점: 장서각이 왕실 중심이라면 이쪽은 민간/지역 권역 자료 위주
-  - 어댑터 위치 예정: `app/services/heritage/koreanstudies.py`
-  - 환경변수 예정: `KOREANSTUDIES_API_KEY` (필요 시), `KOREANSTUDIES_BASE_URL`
+- [x] **한국학자료포털 (한국학중앙연구원) Open API** — `HERITAGE_PROVIDER=live` + `HERITAGE_LIVE_SOURCE=koreanstudies` 로 `LiveKoreanstudiesAdapter` 활성화. `GET http://kostma.aks.ac.kr/OpenAPI/request.aspx` 라이브 호출 (open API — 키 불필요, 장서각과 동일). 응답이 JSON 이 아닌 **XML** 이라 `<ksm>/<items>/<item>` 구조 + `<기본정보>/<분류>/<작성지역>/<작성시기>` 한국어 태그를 `KoreanstudiesSearchResult` → `HeritageDoc` 으로 정규화. `작성지역 @현재주소` 가 있어 장서각 대비 region 데이터가 풍부함 (장서각은 region 정보를 search response 에 노출 안 함). period bucket (조선전기 ≤ 1592 / 조선후기 1593–1896 / 근대 ≥ 1897) 은 장서각과 동일 — 추후 multi-source fan-in 시 score 비교 가능. detail=1 (기본정보) 이 기본값, detail=2 (안내정보) 로 표제어/문단 summary 확장 가능. `KoreanstudiesAPIError` (404/429/timeout/connect/non-XML/unexpected-root) 시 `MockHeritageAdapter` 로 graceful fallback (장서각 패턴 그대로). 53 신규 테스트 (26 client/parser + 23 adapter + 4 factory routing). 운영기관: 한국학중앙연구원 (장서각과 동일 기관). 제공 데이터: 전국 권역 수집 고문헌·고문서 문헌정보, 고지도, **디지털 고문헌 용례사전**.
 - [ ] **국립중앙도서관 Open API**
   - 운영기관: 국립중앙도서관 (NLK)
   - 제공 데이터: 국가자료종합목록 (KOLIS-NET), 한국고문헌종합목록 (KORCIS), 디지털화 원문 고문헌 이미지/텍스트 서지정보
