@@ -22,9 +22,24 @@
 ### 1.2 트렌드 (§5, §8.2.2)
 - [x] 지역별 인기 키워드 조회
 - [x] 시드 데이터 (지역 × 키워드)
-- [ ] 실제 트렌드 수집 잡 (네이버 데이터랩 / 구글 트렌드 / 인스타 해시태그)
-- [ ] 트렌드 키워드 시간순 그래프 데이터
+- [x] **블렌디드 스코어 ranking** (PR #11) — `0.4 * 현재 ratio + 0.6 * 전주 대비 상승률`
+- [x] **네이버 데이터랩 검색어 트렌드 실연동** (`TRENDS_PROVIDER=live`, `NAVER_DATALAB_CLIENT_ID/SECRET`)
+- [x] **네이버 데이터랩 쇼핑인사이트 디스커버리** (PR #12, source A — `TRENDS_DISCOVERY_SOURCE=shopping_insight`)
+- [x] **Open-domain 디스커버리 — 4 소스 multi-source 파이프라인** (`TRENDS_DISCOVERY_SOURCE=open`)
+  - [x] Google Trends RSS (PR #13, source B — `TRENDS_OPEN_GOOGLE_ENABLED`)
+  - [x] Naver Search News compound-noun 추출 (PR #14, source C — `TRENDS_OPEN_NAVER_NEWS_ENABLED`)
+  - [x] Gemini LLM 한식 변형 제안 (PR #15, source D — `TRENDS_OPEN_LLM_ENABLED`, `GEMINI_API_KEY`)
+  - [x] Denylist-only 음식 필터 (PR #13 — novelty 키워드 보존, 정치/스포츠/연예/IT/부동산만 거부)
+  - [x] 동시 가져오기 + per-provider 에러 isolation
+- [x] **어드민 디버그 엔드포인트** (PR #16 — `GET /v1/admin/trends/debug`)
+  - per-provider 통계 (count, sample, elapsed_ms, error text)
+  - 키워드별 all-sources attribution
+- [x] **Naver DataLab per-chunk 회복력** — 1개 chunk 타임아웃이 전체 refresh를 죽이지 않음 (auth/quota는 그대로 abort)
+- [ ] 트렌드 키워드 시간순 그래프 데이터 (frontend chart)
 - [ ] 사용자별 즐겨찾는 키워드 / 알림
+- [ ] daily refresh 잡을 `TRENDS_DISCOVERY_SOURCE=open + TRENDS_PROVIDER=live` 로 실 운영 전환
+- [ ] Naver News 토큰 노이즈 정리 (min-frequency cutoff, 또는 stopword 리스트)
+- [ ] 어드민 React 페이지로 `/admin/trends/debug` 시각화 (sparkline, source venn)
 
 ### 1.3 고문헌 (§5, §7, §8.2.3)
 - [x] 키워드 + 기관 필터 검색 (`GET /v1/documents`)

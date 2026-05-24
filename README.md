@@ -101,10 +101,36 @@ pytest -v
 | Service   | Env var              | `mock` (default)              | `live`                                       |
 | --------- | -------------------- | ----------------------------- | -------------------------------------------- |
 | LLM       | `LLM_PROVIDER`       | Deterministic 3 candidates    | Gemini 2.5 Pro (requires `GEMINI_API_KEY`)   |
+| Trends    | `TRENDS_PROVIDER`    | Deterministic ratios          | Naver DataLab (`NAVER_DATALAB_CLIENT_ID/SECRET`) |
 | Heritage  | `HERITAGE_PROVIDER`  | 3 seed documents (음식디미방 etc.) | 장서각 / 국립민속박물관 / 문화데이터광장 (keys required) |
 | Payments  | `PAYMENTS_PROVIDER`  | Always succeeds, fake billing | TossPayments (`TOSS_SECRET_KEY` required)    |
 
-Live adapters are scaffolded but raise `NotImplementedError` until wired — switching is a single env var change once keys are provided.
+Live adapters for LLM / heritage / payments are scaffolded but raise `NotImplementedError` until wired — switching is a single env var change once keys are provided. The trends adapter is fully wired live.
+
+### Trend discovery pipeline
+
+The weekly trend dashboard (`/v1/trends`) is fed by one of three discovery modes, controlled by `TRENDS_DISCOVERY_SOURCE`:
+
+| Mode | Sources | Use case |
+| --- | --- | --- |
+| `curated` (default) | Static watchlist of ≈79 K-heritage food keywords | Stable baseline, no external dependencies |
+| `shopping_insight` | Naver DataLab Shopping Insight food category top-N | Production e-commerce signal |
+| `open` | 4-source multi-provider fan-in (↓) | Open-domain discovery + novelty |
+
+**`open` mode** combines four independent `TrendCandidateProvider`s and merges their output into the same blended-score ranking. Each provider runs in isolation — one failing does not break the refresh job:
+
+| Provider | Toggle | Source | Notes |
+| --- | --- | --- | --- |
+| `static` | always on | Curated watchlist | Stable baseline keywords |
+| `google_trends_daily` | `TRENDS_OPEN_GOOGLE_ENABLED` | Google Trends RSS (`trends.google.com/trending/rss?geo=KR`) | Stdlib XML, no SDK |
+| `naver_news` | `TRENDS_OPEN_NAVER_NEWS_ENABLED` | Naver Search News compound-noun extraction (regex + frequency) | Reuses `NAVER_DATALAB_CLIENT_ID/SECRET` |
+| `llm_expansion` | `TRENDS_OPEN_LLM_ENABLED` | Gemini 2.5 Flash JSON-schema response | Requires `GEMINI_API_KEY`; default off |
+
+The food filter is **denylist-only** (`app/services/trends/food_filter.py`) — it rejects clearly non-food categories (정치/스포츠/연예/IT 제품/부동산/금융/게임/의료) but accepts everything else, including completely novel concepts (두바이쫀득쿠키, 마라탕후루, 트러플오일). This is intentional: PR #15 LLM expansion can then suggest Korean-heritage variants like 두바이강정 / 두바이약과.
+
+For admin visibility, **`GET /v1/admin/trends/debug?today=YYYY-MM-DD&limit=N`** returns per-provider statistics (candidate count, sample of top-20 candidates, elapsed ms, error text if any) plus the merged ranked top-N with `all_sources` attribution per keyword. See `app/services/trends/debug.py`.
+
+**Resilience**: when `TRENDS_DISCOVERY_SOURCE=open` is combined with `TRENDS_PROVIDER=live`, the merged candidate pool fans out to many Naver DataLab requests. The DataLab adapter (`naver.py`) catches per-chunk transport errors and 5xx upstream errors, logs a warning, and skips just the failed chunk — 401 auth / 429 quota errors still abort the whole refresh as expected.
 
 ## API surface (selected)
 
@@ -115,6 +141,8 @@ Live adapters are scaffolded but raise `NotImplementedError` until wired — swi
 | POST   | `/v1/auth/refresh`                           | -      | Exchange refresh token            |
 | GET    | `/v1/auth/me`                                | user   | Current user + plan               |
 | GET    | `/v1/trends`                                 | -      | Weekly trend keywords             |
+| POST   | `/v1/admin/trends/refresh`                   | admin  | Re-run discovery + score          |
+| GET    | `/v1/admin/trends/debug`                     | admin  | Per-source breakdown + diagnostics |
 | GET    | `/v1/documents`                              | -      | Search heritage documents         |
 | POST   | `/v1/private/recipes/generate`               | user   | AI generates 3 candidates         |
 | GET    | `/v1/private/recipes`                        | user   | My saved recipes                  |

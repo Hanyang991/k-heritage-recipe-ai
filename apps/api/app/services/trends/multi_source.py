@@ -80,7 +80,7 @@ class MultiSourceDiscovery:
         rise_weight: float = 0.6,
         rise_floor: float = -100.0,
         rise_ceiling: float = 200.0,
-        candidates_per_provider: int = 200,
+        candidates_per_provider: int = 50,
     ) -> None:
         if not providers:
             raise ValueError("MultiSourceDiscovery requires at least one provider")
