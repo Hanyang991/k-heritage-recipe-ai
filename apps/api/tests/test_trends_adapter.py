@@ -157,11 +157,62 @@ def test_naver_adapter_raises_on_429() -> None:
             adapter.fetch_series(["a"], date(2025, 1, 1), date(2025, 1, 31))
 
 
-def test_naver_adapter_wraps_transport_errors() -> None:
+def test_naver_adapter_skips_chunk_on_transport_error() -> None:
+    """Transport errors are per-chunk transient; skip the chunk, continue."""
     adapter = NaverDatalabAdapter(client_id="id", client_secret="sec")
     with patch("httpx.Client.post", side_effect=httpx.ConnectError("boom")):
-        with pytest.raises(TrendsAdapterError, match="Naver DataLab request failed"):
-            adapter.fetch_series(["a"], date(2025, 1, 1), date(2025, 1, 31))
+        result = adapter.fetch_series(["a"], date(2025, 1, 1), date(2025, 1, 31))
+    assert result == []
+
+
+def test_naver_adapter_skips_failed_chunk_but_keeps_successful_chunks() -> None:
+    """A timeout on chunk 2 of 3 must not lose chunks 1 and 3."""
+    adapter = NaverDatalabAdapter(client_id="id", client_secret="sec")
+    keywords = [f"k{i}" for i in range(12)]  # 3 chunks of 5/5/2
+
+    ok = _mock_response(
+        200,
+        {"results": [{"title": "k0", "data": [{"period": "2025-01-01", "ratio": 5.0}]}]},
+    )
+    with patch("httpx.Client.post") as post:
+        post.side_effect = [ok, httpx.ReadTimeout("slow"), ok]
+        series = adapter.fetch_series(keywords, date(2025, 1, 1), date(2025, 1, 31))
+    assert post.call_count == 3
+    # Two surviving chunks returned the same single-keyword series fixture.
+    assert [s.keyword for s in series] == ["k0", "k0"]
+
+
+def test_naver_adapter_skips_chunk_on_5xx_upstream() -> None:
+    """502/503 from Naver = transient, skip just the chunk."""
+    adapter = NaverDatalabAdapter(client_id="id", client_secret="sec")
+    keywords = [f"k{i}" for i in range(7)]  # 2 chunks: 5 / 2
+    ok = _mock_response(200, {"results": []})
+    bad = _mock_response(503, {"errorMessage": "upstream busy"})
+    with patch("httpx.Client.post") as post:
+        post.side_effect = [bad, ok]
+        result = adapter.fetch_series(keywords, date(2025, 1, 1), date(2025, 1, 31))
+    assert post.call_count == 2
+    assert result == []  # the OK chunk had no results in fixture
+
+
+def test_naver_adapter_does_not_swallow_401_after_chunking() -> None:
+    """Auth errors are not chunk-local — abort the whole refresh."""
+    adapter = NaverDatalabAdapter(client_id="bad", client_secret="bad")
+    keywords = [f"k{i}" for i in range(7)]
+    with patch("httpx.Client.post") as post:
+        post.return_value = _mock_response(401, {"errorMessage": "Unauthorized"})
+        with pytest.raises(TrendsAdapterError, match="401"):
+            adapter.fetch_series(keywords, date(2025, 1, 1), date(2025, 1, 31))
+
+
+def test_naver_adapter_does_not_swallow_429_after_chunking() -> None:
+    """Quota errors are not chunk-local either."""
+    adapter = NaverDatalabAdapter(client_id="id", client_secret="sec")
+    keywords = [f"k{i}" for i in range(7)]
+    with patch("httpx.Client.post") as post:
+        post.return_value = _mock_response(429, {"errorMessage": "Quota"})
+        with pytest.raises(TrendsAdapterError, match="429"):
+            adapter.fetch_series(keywords, date(2025, 1, 1), date(2025, 1, 31))
 
 
 def test_naver_adapter_returns_parsed_series() -> None:

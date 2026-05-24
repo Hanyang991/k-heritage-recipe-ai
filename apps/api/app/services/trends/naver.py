@@ -11,6 +11,15 @@ requests per day per app. We chunk the keyword list into groups of 5 so a
 Region is intentionally NOT a parameter here: the search trend endpoint is
 nationwide. Per-region popularity would require the *shopping insight* API,
 which is a different surface area and out of scope for this adapter.
+
+Per-chunk resilience
+--------------------
+Open-pool discovery (PR #13–#16) can hand this adapter 100+ merged
+candidates, which fan out to 20+ chunks. A single slow Naver response
+should not kill the whole refresh — so we catch ``httpx`` transport errors
+and HTTP 5xx per chunk, log a warning, and skip just that chunk. Auth/
+quota errors (401/429) are still re-raised because they are not
+chunk-local and the entire refresh has to abort anyway.
 """
 
 from __future__ import annotations
@@ -59,7 +68,15 @@ class NaverDatalabAdapter:
         merged: list[TrendKeywordSeries] = []
         with httpx.Client(timeout=self._timeout) as client:
             for chunk in _chunk(keywords, _MAX_GROUPS_PER_REQUEST):
-                merged.extend(self._fetch_chunk(client, chunk, start, end, time_unit))
+                try:
+                    merged.extend(self._fetch_chunk(client, chunk, start, end, time_unit))
+                except _TransientChunkError as exc:
+                    logger.warning(
+                        "Naver DataLab chunk failed (skipping %d keywords): %s",
+                        len(chunk),
+                        exc,
+                    )
+                    continue
         return merged
 
     def _fetch_chunk(
@@ -87,18 +104,26 @@ class NaverDatalabAdapter:
                 },
             )
         except httpx.HTTPError as exc:
-            raise TrendsAdapterError(f"Naver DataLab request failed: {exc}") from exc
+            # Transport-level error (timeout, connect refused, etc.) — likely
+            # transient for one chunk; let the caller swallow + continue.
+            raise _TransientChunkError(f"transport error: {exc}") from exc
 
         if resp.status_code == 401:
             raise TrendsAdapterError("Naver DataLab rejected credentials (401)")
         if resp.status_code == 429:
             raise TrendsAdapterError("Naver DataLab rate limit exceeded (429)")
+        if 500 <= resp.status_code < 600:
+            raise _TransientChunkError(f"upstream {resp.status_code}: {resp.text[:200]}")
         if resp.status_code >= 400:
             raise TrendsAdapterError(
                 f"Naver DataLab returned {resp.status_code}: {resp.text[:200]}"
             )
 
         return _parse_response(resp.json())
+
+
+class _TransientChunkError(Exception):
+    """Internal marker — a single chunk failed in a way safe to skip."""
 
 
 def _chunk(items: list[str], size: int) -> list[list[str]]:
