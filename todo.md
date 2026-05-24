@@ -49,9 +49,47 @@
 - [x] 키워드 + 기관 필터 검색 (`GET /v1/documents`)
 - [x] 시드 문서 (장서각 / 국립민속박물관 / 문화데이터광장 샘플)
 - [x] **장서각 API 실연동** (PR #33) — `HERITAGE_PROVIDER=live` 로 `LiveHeritageAdapter` 활성화. `GET https://jsg.aks.ac.kr/api/search` 라이브 호출 (open API — 키 불필요. spec PDF §3.2 의 API Key 헤더 / `/api/v1/documents/search` 경로는 https://jsg.aks.ac.kr/api/help 와 다른 것을 확인). 한국어 응답 필드 (`자료명`/`유형분류`/`작성시기`/`청구기호`) 를 `HeritageDoc` 으로 정규화, `작성시기` 에서 `year` + `period` (조선전기/조선후기/근대) 자동 derive. `JangseogakAPIError` (404/429/timeout/connect/non-JSON) 시 `MockHeritageAdapter` 로 graceful fallback — empty result 는 정상 정보로 보존. 41 신규 테스트 (28 client + 13 adapter+factory).
-- [ ] **국립민속박물관 API 실연동** (`NFM_API_KEY`)
-- [ ] **문화데이터광장 API 실연동** (`CULTURE_API_KEY`)
-- [ ] **Vertex AI Vector Search** 임베딩 + 인덱싱 파이프라인
+
+#### 1.3.1 추가 고문헌/역사 Open API 소스 (spec §3.1 확장)
+
+Spec PDF §3.1 은 장서각 + 국립민속박물관 + 문화데이터광장 3개 기관만 명시하지만, 실제 한국 고문헌·역사·전통문화 영역에는 더 폭넓고 품질 좋은 공개 데이터셋이 있어 활용 가능한 소스를 확장한다. 아래 4개 소스가 위의 NFM / 문화데이터광장보다 우선순위가 높음.
+
+- [ ] **한국학자료포털 (한국학중앙연구원) Open API**
+  - 운영기관: 한국학중앙연구원 (장서각과 동일 기관 — 인증/계약 단일화 용이)
+  - 제공 데이터: 전국 권역 수집 고문헌·고문서 문헌정보, 고지도, **디지털 고문헌 용례사전** (까다로운 고어/한자 용어 풀이 — 레시피 생성 프롬프트의 grounding context 강화에 매우 유용)
+  - 차이점: 장서각이 왕실 중심이라면 이쪽은 민간/지역 권역 자료 위주
+  - 어댑터 위치 예정: `app/services/heritage/koreanstudies.py`
+  - 환경변수 예정: `KOREANSTUDIES_API_KEY` (필요 시), `KOREANSTUDIES_BASE_URL`
+- [ ] **국립중앙도서관 Open API**
+  - 운영기관: 국립중앙도서관 (NLK)
+  - 제공 데이터: 국가자료종합목록 (KOLIS-NET), 한국고문헌종합목록 (KORCIS), 디지털화 원문 고문헌 이미지/텍스트 서지정보
+  - 활용 포인트: 가장 광범위한 표준 서지 데이터 — `systemType=온라인자료` 옵션으로 디지털 원문 링크까지 수집 가능
+  - 어댑터 위치 예정: `app/services/heritage/nlk.py`
+  - 환경변수 예정: `NLK_API_KEY`, `NLK_BASE_URL`
+- [ ] **국사편찬위원회 Open API (공공데이터포털 경유)**
+  - 운영기관: 국사편찬위원회
+  - 제공 데이터: 한국역사자료 메타데이터 (역사 인물, 연표/사건 시간선, 연구자료), 귀중본 목록
+  - 활용 포인트: 고문헌 서지정보 + 가공된 인물·연표 메타데이터 → 레시피 era/지역 grounding 정확도 향상
+  - 어댑터 위치 예정: `app/services/heritage/nihc.py`
+  - 환경변수 예정: `DATA_GO_KR_API_KEY` (공공데이터포털 공통 키)
+- [ ] **기호유학 고문헌 통합정보시스템 (충남대학교) Open API**
+  - 운영기관: 충남대학교
+  - 제공 데이터: 기호유학권 (충청도 등) 고서/고문서, 인물 네트워크, 금석문, 서원 소장 자료
+  - 활용 포인트: 지역 특화 — 충청 지역 음식 고문헌·향토 식문화 grounding 시 핵심 (Primary 페르소나 "지방 중소도시 청년 카페" 와 직결)
+  - 어댑터 위치 예정: `app/services/heritage/giho.py`
+  - 환경변수 예정: `GIHO_API_KEY`, `GIHO_BASE_URL`
+
+공통 설계 원칙 (장서각 어댑터 패턴 답습):
+- 각 소스마다 thin `*SearchClient` (httpx) + `*Adapter (HeritageAdapter)` + 응답 정규화로 `HeritageDoc` 생성
+- `MultiSourceHeritageAdapter` (예정) 에서 fan-in 후 dedupe(by external_id) + recency / 인지도 기반 가중치 정렬
+- 단일 소스 실패는 isolation (장서각이 mock fallback 가지듯, 각 소스별 try/except → 해당 소스만 결과 skip, 나머지 정상 응답 유지)
+- `quarantine_logs` 테이블에 스키마 변경된 raw payload 저장 (spec §3.4)
+- KOGL 1유형 출처 표시 자동화 (`source_attribution` 필드)
+- 각 소스별 namespace 분리 (Vertex AI Vector Search 인덱싱 대비)
+
+- [ ] ~~**국립민속박물관 API 실연동** (`NFM_API_KEY`)~~ — 우선순위 낮춤 (위 4개 신규 소스로 대체)
+- [ ] ~~**문화데이터광장 API 실연동** (`CULTURE_API_KEY`)~~ — 우선순위 낮춤 (위 4개 신규 소스로 대체)
+- [ ] **Vertex AI Vector Search** 임베딩 + 인덱싱 파이프라인 (소스별 namespace = jangseogak / koreanstudies / nlk / nihc / giho)
 - [ ] 문서 상세 페이지 API (원문, 번역, 메타데이터)
 - [ ] 라이선스 / 저작권 표기 강화 (§13)
 
