@@ -413,6 +413,159 @@ def test_bare_name_denylist_does_not_over_reject_food(keyword: str) -> None:
     assert is_likely_food_adjacent(keyword), f"expected pass: {keyword!r}"
 
 
+# ---------------------------------------------------------------------------
+# Macro / brand 노이즈 (PR #27) — broader categories that historically
+# leaked: 정부 지출 (교부금 / 보조금 / 지원금), 무역/세제 (관세인상 /
+# 무역수지 / 부가가치세), 외국 자동차 브랜드 (테슬라 / 벤츠 / BMW),
+# 암호화폐 (비트코인 / 이더리움 / 업비트), 항공우주 (누리호 / SpaceX).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # 정부 지출 / 세제 / 무역
+        "지방교부금 삭감",
+        "특별교부금 편성",
+        "보통교부금",
+        "긴급재난지원금",
+        "재난지원금 지급",
+        "보조금 정책",
+        "장려금 지원",
+        "무역수지 흑자",
+        "경상수지 적자",
+        "수출액 증가",
+        "수입액 감소",
+        "수출입 통계",
+        "관세인상 발표",
+        "관세협상 타결",
+        "관세부과 결정",
+        "관세인하 영향",
+        "부가가치세 인상",
+        "법인세 감세",
+        "소득세 개편",
+        "재산세 인상",
+        "종부세 폐지",
+        "상속세 개편",
+        "외환보유고 축소",
+        "외환위기 우려",
+        "외환시장 변동성",
+        # 외국 자동차 브랜드
+        "테슬라 주가",
+        "테슬라 모델Y 출시",
+        "토요타 신차",
+        "혼다 하이브리드",
+        "닛산 리콜",
+        "폭스바겐 배출가스",
+        "벤츠 한국법인",
+        "BMW 시승",
+        "bmw 신형",
+        "아우디 A7",
+        "포르쉐 타이칸",
+        "페라리 신차",
+        "람보르기니 우라칸",
+        "볼보 XC90",
+        "렉서스 ES",
+        "사이버트럭 출시",
+        "모델3 가격",
+        "모델X 리뷰",
+        # 암호화폐 / 가상자산
+        "비트코인 가격",
+        "이더리움 ETF",
+        "도지코인 펌프",
+        "리플 SEC",
+        "솔라나 폭락",
+        "알트코인 시즌",
+        "스테이블코인 규제",
+        "가상자산 과세",
+        "가상화폐 거래소",
+        "암호화폐 시장",
+        "디지털자산 규제",
+        "NFT 발행",
+        "업비트 상장",
+        "빗썸 점검",
+        "코인베이스 IPO",
+        "바이낸스 대규모 인출",
+        "크라켄 거래소",
+        # SNS / 글로벌 IT (식품 컨텍스트 낮은 것만)
+        "트위터 인수",
+        "메타플랫폼 실적",
+        "페이스북 광고",
+        "텔레그램 차단",
+        "왓츠앱 신기능",
+        # 항공우주
+        "누리호 발사",
+        "다누리 궤도",
+        "스페이스X 발사",
+        "SpaceX Starship",
+        "spacex 발사",
+        "로켓발사 일정",
+        "위성발사 성공",
+        "우주왕복선 컬럼비아",
+        "우주정거장 도킹",
+    ],
+)
+def test_rejects_macro_and_brand_noise(keyword: str) -> None:
+    """Broader macro/brand noise (PR #27) — gov spending, foreign car brands,
+    crypto, space sector all rejected."""
+    assert not is_likely_food_adjacent(keyword), f"expected reject: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # 식품 어휘와 collision 가능했던 단어들 — 의도적으로 통과 시키도록
+        # 설계됨. 새로 추가된 macro/brand 패턴이 식품을 over-reject 하면
+        # 이 테스트가 실패한다.
+        #
+        # 로켓 → 로켓샐러드 (루콜라) 식품 — bare "로켓" 은 denylist X
+        "로켓샐러드",
+        "로켓 샐러드",
+        "로켓 잎",
+        # 애플 → 애플파이 / 애플망고 — bare "애플" 은 denylist X
+        "애플파이",
+        "애플망고",
+        "사과 애플 디저트",
+        # 수출 단독은 식품에 합법적으로 등장 — "수출액" 형태만 denylist
+        "김치 수출",
+        "한국 김치 수출",
+        "수출 김치",
+        "수출 농산물",
+        # 발사 단독은 placebo 충돌 가능 — 합성어 형태만 denylist
+        "발사대 빵집",
+        "오픈 발사 디저트",
+        # 무역 단독은 식품 어휘에 등장 가능 ("무역항 어시장")
+        "무역항 어시장",
+        # 인스타 / 틱톡 / 유튜브 / 애플 / 아마존 / 구글은 식품 컨텍스트 있어 의도적 제외
+        "인스타 핫플",
+        "인스타그램 인기 카페",
+        "틱톡 인기 음식",
+        "틱톡 라떼",
+        "유튜브 먹방",
+        "구글 검색 떡볶이",
+        "아마존 식품",
+        # 보조금 / 지원금 자체는 의도적 reject 하지만 카페 보조금은 흔치 않음
+        # → 단어 자체에 macro 의도가 있어 reject 됨 (의도된 동작).
+        # 대신 단어 안에 보조금/지원금이 substring 으로 들어가지 않는
+        # 식품 어휘 (예: 후원, 협찬) 는 통과해야 함.
+        "후원 시식회",
+        "협찬 카페",
+        # 종부세 → 종 substring 충돌 가능: 종이 식초, 종합검진 등
+        "종합 디저트 박람회",  # 종합 != 종부세 (다른 substring)
+        "종이컵 라떼",
+        # 외환 → 외환 외 다른 합성 없음, 별 collision 없음 — 통과 확인
+        # 관세 단독 substring → 관세인하 등 합성만 denylist
+        "관세청 인근 맛집",  # 관세청 != 관세인상/인하 — but 관세인상 substring 안에 "관세" 있어도 안전
+        # NFT 충돌: "NFT" 가 substring 으로 등장하는 식품 단어는 사실상 없음
+        # 가상 substring: 가상화폐 만 denylist, 가상 단독은 OK
+        "가상 시식회",
+    ],
+)
+def test_macro_brand_denylist_does_not_over_reject_food(keyword: str) -> None:
+    """Broader macro/brand additions (PR #27) must not over-reject food/cafe words."""
+    assert is_likely_food_adjacent(keyword), f"expected pass: {keyword!r}"
+
+
 def test_fc_lookaround_does_not_match_english_compounds() -> None:
     """``FC`` only fires when it is a standalone bigram next to non-English chars.
 
