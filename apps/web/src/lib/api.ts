@@ -219,6 +219,39 @@ export interface ApiError extends Error {
   detail?: unknown;
 }
 
+export interface TrendDebugProviderRow {
+  name: string;
+  candidate_count: number;
+  candidates_sample: string[];
+  elapsed_ms: number;
+  error: string | null;
+}
+
+export interface TrendDebugRankedRow {
+  keyword: string;
+  score: number;
+  primary_source: string;
+  all_sources: string[];
+  current_ratio: number | null;
+  rise_percent: number | null;
+}
+
+export interface TrendDebugResponse {
+  discovery_type: string;
+  ref_date: string;
+  limit: number;
+  unique_candidate_count: number;
+  scored_count: number;
+  providers: TrendDebugProviderRow[];
+  ranked: TrendDebugRankedRow[];
+}
+
+export interface TrendRefreshResponse {
+  week_of: string | null;
+  inserted: number;
+  updated: number;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -366,4 +399,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ status, rejection_reason }),
     }),
+  getTrendsDebug: (params: { today?: string; limit?: number } = {}) => {
+    const usp = new URLSearchParams();
+    if (params.today) usp.set("today", params.today);
+    if (params.limit !== undefined) usp.set("limit", String(params.limit));
+    const qs = usp.toString() ? `?${usp}` : "";
+    return request<TrendDebugResponse>(`/admin/trends/debug${qs}`);
+  },
+  refreshTrendsSnapshot: () =>
+    request<TrendRefreshResponse>("/admin/trends/refresh", { method: "POST" }),
 };
