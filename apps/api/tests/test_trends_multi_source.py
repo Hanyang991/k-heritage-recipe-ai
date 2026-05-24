@@ -9,6 +9,7 @@ import pytest
 from app.services.trends import (
     CuratedWatchlistDiscovery,
     GoogleTrendsCandidateProvider,
+    LLMExpansionCandidateProvider,
     MultiSourceDiscovery,
     NaverNewsCandidateProvider,
     NaverShoppingInsightDiscovery,
@@ -268,6 +269,37 @@ def test_factory_open_can_disable_both_open_sources(
         _clear_caches()
 
 
+def test_factory_open_llm_provider_off_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LLM costs money, so it's opt-in even when ``TRENDS_DISCOVERY_SOURCE=open``."""
+    monkeypatch.setenv("TRENDS_DISCOVERY_SOURCE", "open")
+    monkeypatch.delenv("TRENDS_OPEN_LLM_ENABLED", raising=False)
+    _clear_caches()
+    try:
+        d = get_trend_discovery()
+        assert isinstance(d, MultiSourceDiscovery)
+        provider_names = [p.name for p in d.providers]
+        assert "llm_expansion" not in provider_names
+    finally:
+        _clear_caches()
+
+
+def test_factory_open_with_llm_enabled_wires_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRENDS_DISCOVERY_SOURCE", "open")
+    monkeypatch.setenv("TRENDS_OPEN_LLM_ENABLED", "true")
+    _clear_caches()
+    try:
+        d = get_trend_discovery()
+        assert isinstance(d, MultiSourceDiscovery)
+        provider_names = [p.name for p in d.providers]
+        assert "llm_expansion" in provider_names
+    finally:
+        _clear_caches()
+
+
 def test_factory_open_uses_underlying_adapter_setting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -361,5 +393,31 @@ def test_factory_naver_news_seed_queries_fall_back_to_defaults_when_empty(
         )
         assert naver is not None
         assert naver._seed_queries == DEFAULT_SEED_QUERIES  # type: ignore[attr-defined]
+    finally:
+        _clear_caches()
+
+
+def test_factory_llm_provider_construction_respects_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TRENDS_DISCOVERY_SOURCE", "open")
+    monkeypatch.setenv("TRENDS_OPEN_LLM_ENABLED", "true")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.setenv("GEMINI_TRENDS_MODEL", "gemini-2.5-pro")
+    monkeypatch.setenv("GEMINI_TRENDS_TARGET_COUNT", "42")
+    monkeypatch.setenv("GEMINI_TRENDS_BASE_URL", "https://example.test/gemini")
+    _clear_caches()
+    try:
+        d = get_trend_discovery()
+        assert isinstance(d, MultiSourceDiscovery)
+        llm = next(
+            (p for p in d.providers if isinstance(p, LLMExpansionCandidateProvider)),
+            None,
+        )
+        assert llm is not None
+        assert llm._api_key == "gemini-test-key"  # type: ignore[attr-defined]
+        assert llm._model == "gemini-2.5-pro"  # type: ignore[attr-defined]
+        assert llm._target_count == 42  # type: ignore[attr-defined]
+        assert llm._base_url == "https://example.test/gemini"  # type: ignore[attr-defined]
     finally:
         _clear_caches()
