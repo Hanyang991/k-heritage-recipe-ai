@@ -384,6 +384,48 @@ def test_provider_min_article_count_clamps_below_one() -> None:
     assert "두바이쫀득쿠키" in out
 
 
+def test_provider_drops_pr28_news_prose_stopwords() -> None:
+    """PR #28 — generic news prose tokens (시즌/글로벌/푸드/다이닝 + 조사형) 가 leak 되지 않음."""
+    p = NaverNewsCandidateProvider(
+        client_id="id",
+        client_secret="secret",
+        seed_queries=("seed",),
+        min_article_count=1,
+    )
+    with patch("httpx.Client.get") as get:
+        get.return_value = _mock_response(
+            200,
+            _payload(
+                [
+                    _item("두바이쫀득쿠키 다이닝 시즌 글로벌 푸드 식품 업계 매출"),
+                    _item("두바이쫀득쿠키 트렌드가 디저트와 음료의 중심으로 통해서"),
+                    _item("두바이쫀득쿠키 활용한 대표 관계자 전문가"),
+                ]
+            ),
+        )
+        out = p.discover_candidates()
+    assert "두바이쫀득쿠키" in out
+    for stopword in (
+        "다이닝",
+        "시즌",
+        "글로벌",
+        "푸드",
+        "식품",
+        "업계",
+        "매출",
+        "트렌드가",
+        "디저트와",
+        "음료의",
+        "중심으로",
+        "통해서",
+        "활용한",
+        "대표",
+        "관계자",
+        "전문가",
+    ):
+        assert stopword not in out, stopword
+
+
 def test_extract_token_counts_and_dfs_distinguishes_total_vs_document_frequency() -> None:
     from app.services.trends.naver_news import _extract_token_counts_and_dfs
 

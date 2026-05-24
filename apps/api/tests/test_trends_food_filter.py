@@ -586,3 +586,173 @@ def test_ignorecase_flag_catches_lowercase_abbreviations() -> None:
     assert not is_likely_food_adjacent("epl 결승")
     assert not is_likely_food_adjacent("gdp 회복")
     assert not is_likely_food_adjacent("mlb 결승")
+
+
+# ---------------------------------------------------------------------------
+# PR #28 — Bare 지명 / 산업 / 예능 / 추가 인명 leaks observed in live RSS
+# during the multi-source open-discovery refresh. Each block is anchored
+# carefully so the new patterns do NOT regress the existing novelty cases
+# (``이탈리아 디저트``, ``베트남 커피``, ``프랑스 디저트``, ``두바이쫀득쿠키``).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # bare 국가/지역명 — RSS 1순위 leaks
+        "홍콩",
+        "대만",
+        "미국",
+        "중국",
+        "유럽",
+        "영국",
+        "독일",
+        "러시아",
+        "이탈리아",
+        "베트남",
+        "프랑스",
+        "일본",
+        "싱가포르",
+        "호주",
+        "캐나다",
+        "인도",
+        "스페인",
+        "튀르키예",
+    ],
+)
+def test_rejects_bare_country_names(keyword: str) -> None:
+    """Bare 국가명 (라이브 RSS 에서 leak 된 ``홍콩`` 등) 은 거부.
+
+    ``두바이`` 는 *의도적으로* 이 리스트에서 제외 — ``두바이쫀득쿠키`` 같이
+    이 코드베이스의 상징적 novelty trend 라 bare ``두바이`` 도 통과시킨다.
+    """
+    assert not is_likely_food_adjacent(keyword), f"expected reject: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # 합성 food 컨텍스트는 여전히 통과해야 함 — ``^...$`` 앵커링이 핵심.
+        "이탈리아 디저트",
+        "베트남 커피",
+        "프랑스 디저트",
+        "홍콩식 디저트",
+        "홍콩 라면",
+        "미국식 도넛",
+        "중국식 만두",
+        "일본 라멘",
+        "일본식 카레",
+        "독일 빵",
+        "이탈리아 파스타",
+        "스페인 츄러스",
+        # 두바이 + 두바이쫀득쿠키 도 그대로 통과 (의도된 한정 제외)
+        "두바이",
+        "두바이쫀득쿠키",
+        "두바이초콜릿",
+        # 인도 카레 등 — bare ``인도`` 는 reject 지만 ``인도 카레`` 는 통과
+        "인도 카레",
+    ],
+)
+def test_country_compound_phrases_still_pass(keyword: str) -> None:
+    """국가명 + 음식 어휘 합성은 whitespace-strip 후에도 ``^국가명$`` 에 안 걸려 통과."""
+    assert is_likely_food_adjacent(keyword), f"expected pass: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # bare 산업/카테고리 — 라이브 RSS leaks (``뷰티`` 가 16위였음)
+        "뷰티",
+        "패션",
+        "명품",
+        "화장품",
+        "의류",
+        "가전",
+        "건설",
+        "반도체",
+        "이차전지",
+        "배터리",
+        "중소기업",
+        "버킨백",
+    ],
+)
+def test_rejects_bare_industry_categories(keyword: str) -> None:
+    assert not is_likely_food_adjacent(keyword), f"expected reject: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # 산업명 + 음식 합성은 통과해야 함 (whitespace-strip 후 ``^산업명$`` 에 안 걸림)
+        "뷰티 디저트",  # 신선 컨셉
+        "패션 카페",
+        "명품 디저트",
+        # ``김치`` 류 식품은 그대로
+        "김치찌개",
+        "비빔밥",
+        # ``배터리`` 단독 reject 지만 ``배터리`` 가 substring 으로 들어간 식품 어휘
+        # 는 사실상 없음 — 안전성 검증
+        "에너지 디저트",
+        "충전 카페",
+    ],
+)
+def test_industry_compounds_still_pass(keyword: str) -> None:
+    assert is_likely_food_adjacent(keyword), f"expected pass: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # 예능 / TV 프로그램 (음식 컨셉 자주 등장하지만 *프로그램명* 자체는 trend 아님)
+        "편스토랑",
+        "편스토랑 출연",
+        "런닝맨",
+        "무한도전 레전드",
+        "놀면뭐하니",
+        "복면가왕",
+        "미운우리새끼",
+        "아는형님",
+        "유퀴즈온더블록",
+    ],
+)
+def test_rejects_tv_program_names(keyword: str) -> None:
+    assert not is_likely_food_adjacent(keyword), f"expected reject: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # PR #28 에서 새로 추가된 bare names — 라이브 RSS 에서 leak 됨
+        "박형룡",
+        "박형룡 신학자",
+        "송일국",
+        "도경완",
+        "이동국",
+        "이동국 인터뷰",
+    ],
+)
+def test_rejects_pr28_bare_names(keyword: str) -> None:
+    assert not is_likely_food_adjacent(keyword), f"expected reject: {keyword!r}"
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        # 새 bare-name 들이 surname syllable / food 어휘를 over-reject 하면 안됨.
+        # ``박형룡`` 에 들어간 ``박`` / ``박형`` / ``형룡`` substring 충돌 가능 검증.
+        "박하사탕",  # 박 surname share
+        "박찬호",  # 이미 denylist 에 있음 → reject 이지만 다른 이유
+        "이밥",  # 이 surname share
+        "송편",  # 송 surname share with 송일국
+        "송편타르트",
+        "도라지청",  # 도 surname share with 도경완
+        "동치미",  # 동 surname share with 이동국 (substring ``동국`` 없음)
+    ],
+)
+def test_pr28_bare_names_do_not_over_reject(keyword: str) -> None:
+    """새로 추가된 bare-name 들이 식품 어휘를 over-reject 하지 않는지."""
+    if keyword == "박찬호":
+        # 이미 PR #26 denylist 에 있음
+        assert not is_likely_food_adjacent(keyword)
+    else:
+        assert is_likely_food_adjacent(keyword), f"expected pass: {keyword!r}"
