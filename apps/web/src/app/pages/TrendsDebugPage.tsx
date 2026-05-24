@@ -3,6 +3,8 @@ import { AlertCircle, RefreshCw, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Sparkline } from "../components/Sparkline";
+import { useTrendSparklines } from "../hooks/useTrendSparklines";
 import { api, TrendDebugResponse } from "@/lib/api";
 
 const LIMIT_OPTIONS = [10, 20, 50, 100];
@@ -72,6 +74,12 @@ export function TrendsDebugPage() {
     () => data?.providers.reduce((sum, p) => sum + p.elapsed_ms, 0) ?? 0,
     [data],
   );
+
+  const rankedKeywords = useMemo(
+    () => data?.ranked.map((r) => r.keyword) ?? [],
+    [data],
+  );
+  const sparklines = useTrendSparklines(rankedKeywords, 4);
 
   return (
     <div className="flex-1 overflow-auto bg-[#F9FAFB]">
@@ -214,10 +222,13 @@ export function TrendsDebugPage() {
                       <th className="text-right p-3 font-semibold text-[#4B5563]">score</th>
                       <th className="text-right p-3 font-semibold text-[#4B5563]">current</th>
                       <th className="text-right p-3 font-semibold text-[#4B5563]">rise %</th>
+                      <th className="text-left p-3 font-semibold text-[#4B5563] w-24">4주 추이</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.ranked.map((r, idx) => (
+                    {data.ranked.map((r, idx) => {
+                      const points = sparklines.get(r.keyword);
+                      return (
                       <tr
                         key={`${r.keyword}-${idx}`}
                         className="border-b border-[#F3F4F6]"
@@ -260,8 +271,18 @@ export function TrendsDebugPage() {
                         <td className="p-3 text-right text-[#4B5563]">
                           {r.rise_percent === null ? "-" : `${r.rise_percent.toFixed(1)}%`}
                         </td>
+                        <td className="p-3">
+                          {points === undefined ? (
+                            <Sparkline points={[]} width={72} height={22} />
+                          ) : points === null || points.length < 2 ? (
+                            <span className="text-xs text-[#9CA3AF]">-</span>
+                          ) : (
+                            <Sparkline points={points} width={72} height={22} />
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

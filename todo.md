@@ -35,7 +35,7 @@
   - per-provider 통계 (count, sample, elapsed_ms, error text)
   - 키워드별 all-sources attribution
 - [x] **Naver DataLab per-chunk 회복력** — 1개 chunk 타임아웃이 전체 refresh를 죽이지 않음 (auth/quota는 그대로 abort)
-- [ ] 트렌드 키워드 시간순 그래프 데이터 (frontend chart)
+- [x] **트렌드 시계열 그래프** (PR #23) — 공용 미니 `Sparkline` (SVG, recharts X) + `useTrendSparklines` 훅: 대시보드 트렌드 카드 안에 4주 스파크라인 (상승 녹색 / 하락 적색) — 이미 구현된 클릭-확대 dialog (`TrendSeriesDialog`)와 결합. `/admin/trends/debug` 랭킹 테이블에 `4주 추이` 컬럼 추가되어 PR #22의 "스파크라인 다음 PR 후보" 이월항 닫음. fan-out 최대 30 키워드로 측정해 live datalab 쿠오타 보호.
 - [ ] 사용자별 즐겨찾는 키워드 / 알림
 - [x] **운영 전환 인프라** (PR #19) — `.env.example`에 trend 파이프라인 섹션 추가, `docker-compose.yml`에 `trends_refresher` 사이드카 서비스 (`python -m app.jobs.refresh_scheduler`), `TRENDS_REFRESH_HOUR_UTC` 기본 18 UTC (= 03:00 KST). 실제로 `open + live` 로 켜는 건 `apps/api/.env` 의 env 값 변경 (코드 default는 안전한 `curated + mock` 그대로). README "Production rollout" 섹션 참고.
 - [x] **Naver News 토큰 노이즈 정리** (PR #18) — min-article-count cutoff (df ≥ 2 기본) + 한국어 stopword set (있다/오늘의/디저트/브랜드/트렌드 등 80+ 패턴). 라이브 결과: `{오늘의, 현지, 브랜드, 트렌드, 신메뉴, 음료, 카페}` → `{밀크티, 다이닝, 아이스크림, 과일, 말차, 베이커리}` 로 정리됨
