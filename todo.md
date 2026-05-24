@@ -39,7 +39,9 @@
 - [ ] 사용자별 즐겨찾는 키워드 / 알림
 - [x] **운영 전환 인프라** (PR #19) — `.env.example`에 trend 파이프라인 섹션 추가, `docker-compose.yml`에 `trends_refresher` 사이드카 서비스 (`python -m app.jobs.refresh_scheduler`), `TRENDS_REFRESH_HOUR_UTC` 기본 18 UTC (= 03:00 KST). 실제로 `open + live` 로 켜는 건 `apps/api/.env` 의 env 값 변경 (코드 default는 안전한 `curated + mock` 그대로). README "Production rollout" 섹션 참고.
 - [x] **Naver News 토큰 노이즈 정리** (PR #18) — min-article-count cutoff (df ≥ 2 기본) + 한국어 stopword set (있다/오늘의/디저트/브랜드/트렌드 등 80+ 패턴). 라이브 결과: `{오늘의, 현지, 브랜드, 트렌드, 신메뉴, 음료, 카페}` → `{밀크티, 다이닝, 아이스크림, 과일, 말차, 베이커리}` 로 정리됨
-- [ ] Google Trends Daily 비음식 토큰 정리 (다음 PR 후보 — `짜라위 분짠`, `가계부채`, `홍상수`, `용인 fc 대 충남 아산 fc` 같은 인물/경제/스포츠 leak)
+- [x] **Google Trends 비음식 토큰 cleanup** (PR #20) — `food_filter` denylist에 finance (가계부채/GDP/실업률/예산안/경제성장률), KBO/K-league (`FC` lookaround + 베어스/타이거즈/랜더스/트윈스 등 닉네임), 정치 입법 (법안/탄핵/청문회), 법조 (검찰/판결/체포영장/소송), 군사 (전쟁/미사일/드론), 영화제/시사회 카테고리 추가. `re.IGNORECASE` 활성화 (`mlb`/`fc`/`gdp` 소문자도 매칭). `신곡(?!동)` 좁힘 (신곡동 맛집 보존). 라이브 RSS에서 `가계부채` / `용인 fc 대 충남 아산 fc` / `mlb` reject 확인.
+- [ ] **bare 인명 사전** (다음 PR 후보 — `홍상수` / `김상식` / `김대호` / `정해영` 같이 카테고리 단서 없는 인물명 leak; allowlist-free 한계를 닫으려면 curated 인명 set 필요)
+- [ ] **broader macro/brand 노이즈** (다음 PR 후보 — `교부금` / `보조금` / `수출` 같은 거시 단어, `테슬라` 같은 글로벌 브랜드명 trend leak)
 - [ ] 어드민 React 페이지로 `/admin/trends/debug` 시각화 (sparkline, source venn)
 
 ### 1.3 고문헌 (§5, §7, §8.2.3)
@@ -93,7 +95,7 @@
 - [x] SQLAlchemy 2.x + Alembic migrations
 - [x] SQLite(dev/test) / Postgres(compose)
 - [x] 어댑터 패턴 (LLM / Heritage / Payments)
-- [x] 27개 pytest 통과 (별점/판매 토글 + 반려 사유 + refresh + 온보딩 케이스 포함)
+- [x] 372개 pytest 통과 (auth / recipes / admin / trends 4-source / quotas / PDF + refresh / 온보딩 / food_filter denylist 회귀 포함)
 - [x] ruff lint + format check
 - [ ] **Redis 캐싱** (현재 compose에만 떠있고 코드에서 미사용) — 트렌드 / 문서 검색 캐시
 - [ ] 백그라운드 잡 큐 (Celery / RQ / Cloud Tasks)
@@ -174,7 +176,7 @@
 
 ## 4. 테스트
 
-- [x] 백엔드 단위 / 통합 테스트 21개 (auth / recipes / admin / trends / quotas / PDF + refresh)
+- [x] 백엔드 단위 / 통합 테스트 372개 (auth / recipes / admin / trends 4-source / quotas / PDF + refresh / food_filter denylist 회귀)
 - [ ] **프론트엔드 단위 테스트** (Vitest + React Testing Library)
 - [ ] **E2E 테스트** (Playwright) — 핵심 사용자 플로우
   - [ ] 회원가입 → 로그인 → 레시피 생성 → PDF 다운로드
