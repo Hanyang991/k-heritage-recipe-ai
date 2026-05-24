@@ -134,6 +134,24 @@ For admin visibility, **`GET /v1/admin/trends/debug?today=YYYY-MM-DD&limit=N`** 
 
 **Naver News noise reduction** (PR #18): the `naver_news` provider applies two filters before ranking to keep the top-N free of generic news/marketing vocabulary. First, a per-article document-frequency cutoff (`NAVER_NEWS_MIN_ARTICLE_COUNT`, default 2) drops tokens that only appeared in a single article — a ranty article repeating one phrase no longer hijacks the trend list. Second, an explicit Korean stopword set strips news-prose residue (있다 / 더욱 / 오늘의), generic categories that match every seed query (디저트 / 카페 / 음료 / 신메뉴), and marketing meta-vocabulary (브랜드 / 트렌드 / 출시). Real food keywords like 아이스크림 / 커피 / 라떼 are *not* stopwords — they may be over-general but they are still legitimate signal.
 
+### Production rollout (PR #19)
+
+To switch the dashboard from the static curated baseline to the full live multi-source pipeline, set the following in `apps/api/.env` (or your deployment's secret manager):
+
+```env
+TRENDS_DISCOVERY_SOURCE=open
+TRENDS_PROVIDER=live
+NAVER_DATALAB_CLIENT_ID=...        # same app as Shopping Insight + News
+NAVER_DATALAB_CLIENT_SECRET=...
+TRENDS_OPEN_LLM_ENABLED=true       # optional; daily ~$0.01 in Gemini cost
+GEMINI_API_KEY=...
+TRENDS_REFRESH_HOUR_UTC=18         # 18 UTC = 03 KST; new top-N ready by morning
+```
+
+`docker compose up` will then bring up an additional **`trends_refresher`** sidecar that runs `python -m app.jobs.refresh_scheduler`. The scheduler is a minimal stdlib loop — it sleeps in 60-second chunks until the next scheduled hour and runs `refresh_trends` once per day. Each iteration's refresh is wrapped in try/except so one bad day (Gemini outage, Naver quota) does not crash the loop. Operators with their own scheduler (Kubernetes `CronJob`, host cron, GitHub Actions schedule, AWS EventBridge) can drop the `trends_refresher` service and invoke `python -m app.jobs.refresh_trends` directly on their preferred cadence.
+
+The admin endpoint `POST /v1/admin/trends/refresh` remains available for on-demand refresh; `GET /v1/admin/trends/debug` continues to show per-provider statistics for live verification.
+
 ## API surface (selected)
 
 | Method | Path                                         | Auth   | Description                       |

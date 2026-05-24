@@ -37,7 +37,7 @@
 - [x] **Naver DataLab per-chunk 회복력** — 1개 chunk 타임아웃이 전체 refresh를 죽이지 않음 (auth/quota는 그대로 abort)
 - [ ] 트렌드 키워드 시간순 그래프 데이터 (frontend chart)
 - [ ] 사용자별 즐겨찾는 키워드 / 알림
-- [ ] daily refresh 잡을 `TRENDS_DISCOVERY_SOURCE=open + TRENDS_PROVIDER=live` 로 실 운영 전환
+- [x] **운영 전환 인프라** (PR #19) — `.env.example`에 trend 파이프라인 섹션 추가, `docker-compose.yml`에 `trends_refresher` 사이드카 서비스 (`python -m app.jobs.refresh_scheduler`), `TRENDS_REFRESH_HOUR_UTC` 기본 18 UTC (= 03:00 KST). 실제로 `open + live` 로 켜는 건 `apps/api/.env` 의 env 값 변경 (코드 default는 안전한 `curated + mock` 그대로). README "Production rollout" 섹션 참고.
 - [x] **Naver News 토큰 노이즈 정리** (PR #18) — min-article-count cutoff (df ≥ 2 기본) + 한국어 stopword set (있다/오늘의/디저트/브랜드/트렌드 등 80+ 패턴). 라이브 결과: `{오늘의, 현지, 브랜드, 트렌드, 신메뉴, 음료, 카페}` → `{밀크티, 다이닝, 아이스크림, 과일, 말차, 베이커리}` 로 정리됨
 - [ ] Google Trends Daily 비음식 토큰 정리 (다음 PR 후보 — `짜라위 분짠`, `가계부채`, `홍상수`, `용인 fc 대 충남 아산 fc` 같은 인물/경제/스포츠 leak)
 - [ ] 어드민 React 페이지로 `/admin/trends/debug` 시각화 (sparkline, source venn)

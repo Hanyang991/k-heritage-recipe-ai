@@ -45,6 +45,23 @@ services:
     command: >
       sh -c "python -m app.db.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
+  # Daily scheduler that re-runs the trend discovery pipeline once per day
+  # (default 18 UTC = 03 KST). Operators with their own scheduler (k8s
+  # CronJob, host cron, GitHub Actions) can drop this service and instead
+  # invoke `python -m app.jobs.refresh_trends` on their preferred cadence.
+  trends_refresher:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    env_file:
+      - ./apps/api/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://kheritage:kheritage@db:5432/kheritage
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m app.jobs.refresh_scheduler
+
   web:
     build:
       context: ./apps/web

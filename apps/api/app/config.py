@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     gemini_trends_model: str = "gemini-2.5-flash"
     gemini_trends_target_count: int = 30
     gemini_trends_base_url: str = "https://generativelanguage.googleapis.com"
+    # Daily scheduler trigger hour in UTC. Default 18 UTC = 03:00 KST so the
+    # new top-N is ready by the time East Asian users open the dashboard.
+    trends_refresh_hour_utc: int = 18
 
     gemini_api_key: str = ""
     jangseogak_api_key: str = ""
