@@ -11,6 +11,7 @@ from app.models.recipe import Recipe, RecipeStatus
 from app.models.subscription import Plan, Subscription
 from app.models.trend import Trend
 from app.models.user import User, UserRole
+from app.models.vector_search_datapoint import VectorSearchDatapoint
 
 __all__ = [
     "Document",
@@ -26,4 +27,5 @@ __all__ = [
     "User",
     "UserFavoriteKeyword",
     "UserRole",
+    "VectorSearchDatapoint",
 ]

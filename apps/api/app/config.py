@@ -118,18 +118,29 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     # Vertex AI embedding + Vector Search (per-source namespace indexing)
     # ------------------------------------------------------------------
-    # When ``EMBEDDING_PROVIDER=live`` the API calls Vertex AI's
-    # publisher-model ``:predict`` endpoint for ``text-embedding-005``
-    # (or whichever ``VERTEX_EMBEDDING_MODEL`` overrides). Missing
-    # ``VERTEX_PROJECT_ID`` / ``GOOGLE_OAUTH_ACCESS_TOKEN`` degrades to
-    # the mock embedder at boot — same contract as the heritage/LLM
-    # factories. See ``app/services/embeddings/__init__.py``.
-    embedding_provider: Literal["mock", "live"] = "mock"
-    # ``VECTOR_SEARCH_PROVIDER=live`` enables the Vertex AI Vector
-    # Search REST adapter. Per-namespace ``VERTEX_VECTOR_INDEX_*`` env
-    # vars wire each source to its own Vertex index / deployed index
-    # / index endpoint — see ``app/services/vector_search/__init__.py``.
-    vector_search_provider: Literal["mock", "live"] = "mock"
+    # ``EMBEDDING_PROVIDER`` selects the text → vector backend:
+    #   ``mock``   (default) — deterministic hash-based vectors, no I/O.
+    #   ``gemini`` — Google AI Studio ``text-embedding-004`` REST API,
+    #               reuses ``GEMINI_API_KEY`` (no new credentials). Free
+    #               tier covers ~1500 req/day at ~100 req/min, which is
+    #               adequate for periodic heritage indexing batches.
+    #   ``live``   — Vertex AI ``text-embedding-005`` (``:predict``
+    #               REST surface). Requires ``VERTEX_PROJECT_ID`` and
+    #               ``GOOGLE_OAUTH_ACCESS_TOKEN``; missing either
+    #               degrades to mock at boot.
+    # See ``app/services/embeddings/__init__.py``.
+    embedding_provider: Literal["mock", "gemini", "live"] = "mock"
+    # ``VECTOR_SEARCH_PROVIDER`` selects the vector-store backend:
+    #   ``mock``     (default) — in-memory store + brute-force cosine.
+    #   ``pgvector`` — :class:`PgVectorSearchAdapter` persisting vectors
+    #                  in the project's existing Postgres database. The
+    #                  **free** path — pair with
+    #                  ``EMBEDDING_PROVIDER=gemini`` for a zero-cost
+    #                  hybrid retrieval stack.
+    #   ``live``     — Vertex AI Vector Search REST adapter; needs
+    #                  ``VERTEX_VECTOR_INDEX_*`` env vars per source.
+    # See ``app/services/vector_search/__init__.py``.
+    vector_search_provider: Literal["mock", "pgvector", "live"] = "mock"
     vertex_project_id: str = ""
     vertex_location: str = "us-central1"
     vertex_embedding_model: str = "text-embedding-005"
