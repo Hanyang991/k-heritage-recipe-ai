@@ -208,6 +208,22 @@ export interface RecipeDetail {
   rejection_reason: string;
 }
 
+export interface RelatedRecipe {
+  id: string;
+  name: string;
+  region: string;
+  era: string;
+  diet: string;
+  menu_type: string;
+  keyword: string;
+  status: RecipeStatus;
+  is_recommended: boolean;
+  image_url: string;
+  estimated_cost_krw: number;
+  time_minutes: number;
+  match_score: number;
+}
+
 export interface GenerateResponse {
   candidates: RecipeCandidate[];
   matched_documents: DocumentMatch[];
@@ -397,6 +413,10 @@ export const api = {
     }),
   listMyRecipes: () => request<RecipeListItem[]>("/private/recipes"),
   getRecipe: (id: string) => request<RecipeDetail>(`/private/recipes/${id}`),
+  getRelatedRecipes: (id: string, limit = 5) =>
+    request<RelatedRecipe[]>(
+      `/private/recipes/${id}/related?limit=${limit}`
+    ),
   updateRecipe: (
     id: string,
     payload: { rating?: number; is_selling?: boolean }

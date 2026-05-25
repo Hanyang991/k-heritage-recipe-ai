@@ -114,3 +114,29 @@ class RecipeUpdateRequest(BaseModel):
 class RecipeStatusUpdate(BaseModel):
     status: RecipeStatus
     rejection_reason: str = ""
+
+
+class RelatedRecipeOut(BaseModel):
+    """A related-recipe card surfaced next to a seed recipe.
+
+    Carries enough of :class:`RecipeListItem` for the frontend to render
+    a card without an extra GET round-trip plus ``match_score`` for
+    debugging / sort UX. The score is not normalised to [0, 1] — see
+    :mod:`app.services.recommendation` for the scoring formula.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    region: str
+    era: str
+    diet: str
+    menu_type: str
+    keyword: str
+    status: RecipeStatus
+    is_recommended: bool
+    image_url: str
+    estimated_cost_krw: int
+    time_minutes: int
+    match_score: float
