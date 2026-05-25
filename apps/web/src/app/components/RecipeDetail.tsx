@@ -14,7 +14,12 @@ import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { toast } from "sonner";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { api, getToken, RecipeDetail as RecipeDetailType } from "@/lib/api";
+import {
+  api,
+  getToken,
+  RecipeDetail as RecipeDetailType,
+  RelatedRecipe,
+} from "@/lib/api";
 import { useAuth } from "../auth/AuthContext";
 
 export function RecipeDetail() {
@@ -23,6 +28,7 @@ export function RecipeDetail() {
   const [recipe, setRecipe] = useState<RecipeDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [related, setRelated] = useState<RelatedRecipe[] | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -32,6 +38,23 @@ export function RecipeDetail() {
       .then(setRecipe)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setRelated(null);
+    api
+      .getRelatedRecipes(id, 5)
+      .then((items) => {
+        if (!cancelled) setRelated(items);
+      })
+      .catch(() => {
+        if (!cancelled) setRelated([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const handleCopy = () => {
@@ -320,6 +343,8 @@ export function RecipeDetail() {
                 </div>
               </div>
             )}
+
+            <RelatedRecipesSection items={related} />
           </div>
 
           <div className="col-span-1">
@@ -417,6 +442,93 @@ export function RecipeDetail() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+const STATUS_BADGE: Record<string, { label: string; bg: string; fg: string }> = {
+  approved: { label: "승인", bg: "#D1FAE5", fg: "#059669" },
+  pending_review: { label: "검수 대기", bg: "#FEF3C7", fg: "#D97706" },
+  rejected: { label: "반려", bg: "#FEE2E2", fg: "#991B1B" },
+  flagged: { label: "보류", bg: "#FEE2E2", fg: "#991B1B" },
+  draft: { label: "초안", bg: "#E5E7EB", fg: "#4B5563" },
+};
+
+function RelatedRecipesSection({ items }: { items: RelatedRecipe[] | null }) {
+  // Render nothing once the request has completed and produced zero
+  // results — keeps the layout clean for brand-new accounts where the
+  // user has only one recipe so there's nothing to compare against.
+  if (items !== null && items.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-[#E5E7EB] p-6">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-lg font-semibold text-[#111827]">관련 레시피</h2>
+        <p className="text-xs text-[#6B7280]">
+          태그 / 재료 유사도 기반 추천
+        </p>
+      </div>
+      {items === null ? (
+        <div className="text-sm text-[#4B5563]">관련 레시피를 찾는 중…</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {items.map((r) => {
+            const badge = STATUS_BADGE[r.status] ?? STATUS_BADGE.pending_review;
+            return (
+              <Link
+                key={r.id}
+                to={`/recipes/${r.id}`}
+                className="block bg-white rounded-lg border border-[#E5E7EB] overflow-hidden hover:shadow-md hover:border-[#6366F1] transition-all"
+              >
+                <div className="h-28 bg-[#F3F4F6] overflow-hidden">
+                  {r.image_url && (
+                    <ImageWithFallback
+                      src={r.image_url}
+                      alt={r.name}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
+                <div className="p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span
+                      className="px-2 py-0.5 text-xs rounded"
+                      style={{ background: badge.bg, color: badge.fg }}
+                    >
+                      {badge.label}
+                    </span>
+                    <span
+                      className="text-xs text-[#6366F1] font-mono"
+                      title={`유사도 점수 ${r.match_score.toFixed(2)}`}
+                    >
+                      유사도 {r.match_score.toFixed(2)}
+                    </span>
+                  </div>
+                  <h3 className="font-semibold text-sm text-[#111827] mb-1.5 line-clamp-2 hover:text-[#3730A3]">
+                    {r.name}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#4B5563]">
+                    {r.region && (
+                      <span className="px-1.5 py-0.5 bg-[#EDE9FE] text-[#3730A3] rounded">
+                        {r.region}
+                      </span>
+                    )}
+                    {r.menu_type && (
+                      <span className="px-1.5 py-0.5 bg-[#EDE9FE] text-[#3730A3] rounded">
+                        {r.menu_type}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1 ml-auto">
+                      <Clock className="w-3 h-3" />
+                      {r.time_minutes}분
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

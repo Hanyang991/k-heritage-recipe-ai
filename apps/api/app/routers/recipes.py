@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
@@ -23,11 +23,17 @@ from app.schemas.recipe import (
     RecipeListItem,
     RecipeStep,
     RecipeUpdateRequest,
+    RelatedRecipeOut,
 )
 from app.services.heritage import get_heritage_adapter
 from app.services.llm import get_llm_adapter
 from app.services.llm.base import GenerateRecipesInput
 from app.services.pdf import render_certificate_pdf, render_recipe_pdf
+from app.services.recommendation import (
+    DEFAULT_RELATED_LIMIT,
+    MAX_RELATED_LIMIT,
+    find_related_recipes,
+)
 
 router = APIRouter(prefix="/private/recipes", tags=["recipes"])
 
@@ -184,6 +190,46 @@ def get_recipe(
 ) -> RecipeDetailOut:
     recipe = _get_owned_recipe(db, recipe_id, current_user)
     return _to_detail(recipe)
+
+
+@router.get("/{recipe_id}/related", response_model=list[RelatedRecipeOut])
+def get_related_recipes(
+    recipe_id: str,
+    limit: int = Query(default=DEFAULT_RELATED_LIMIT, ge=1, le=MAX_RELATED_LIMIT),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[RelatedRecipeOut]:
+    """Return recipes similar to ``recipe_id`` (todo §1.4 "関連 レシピ").
+
+    Uses the tag + ingredient-overlap scorer in
+    :mod:`app.services.recommendation`. Visibility: the viewer's own
+    recipes (any status) plus other users' ``approved`` recipes — see
+    :func:`app.services.recommendation.find_related_recipes` for the
+    full contract.
+
+    404s when the seed recipe does not exist or does not belong to the
+    current user (same envelope as ``GET /{recipe_id}``).
+    """
+    seed = _get_owned_recipe(db, recipe_id, current_user)
+    recommendations = find_related_recipes(db, seed=seed, viewer=current_user, limit=limit)
+    return [
+        RelatedRecipeOut(
+            id=rec.recipe.id,
+            name=rec.recipe.name,
+            region=rec.recipe.region,
+            era=rec.recipe.era,
+            diet=rec.recipe.diet,
+            menu_type=rec.recipe.menu_type,
+            keyword=rec.recipe.keyword,
+            status=rec.recipe.status,
+            is_recommended=rec.recipe.is_recommended,
+            image_url=rec.recipe.image_url,
+            estimated_cost_krw=rec.recipe.estimated_cost_krw,
+            time_minutes=rec.recipe.time_minutes,
+            match_score=round(rec.match_score, 4),
+        )
+        for rec in recommendations
+    ]
 
 
 @router.patch("/{recipe_id}", response_model=RecipeDetailOut)
