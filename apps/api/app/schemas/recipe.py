@@ -3,7 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.recipe import RecipeStatus
-from app.schemas.document import DocumentMatch
+from app.schemas.document import DocumentMatch, LicenseNoticeOut
 
 
 class IngredientLine(BaseModel):
@@ -27,7 +27,15 @@ class RecipeGenerateRequest(BaseModel):
 
 
 class RecipeCandidate(BaseModel):
-    """A single AI-generated recipe candidate (3 are returned per generate call)."""
+    """A single AI-generated recipe candidate (3 are returned per generate call).
+
+    ``source_attribution`` keeps the legacy display string for backward
+    compatibility with existing frontend callers. ``license_notice`` is
+    the new spec-§3.1 structured KOGL-1 record carrying the same data
+    in a machine-readable form (institution display name, license URL,
+    permissions / obligations summary) so admin / B2B clients can audit
+    compliance programmatically.
+    """
 
     id: str
     name: str
@@ -37,6 +45,7 @@ class RecipeCandidate(BaseModel):
     time_minutes: int
     estimated_cost_krw: int
     source_attribution: str
+    license_notice: LicenseNoticeOut | None = None
     is_recommended: bool
     image_url: str = ""
     status: RecipeStatus
@@ -86,6 +95,7 @@ class RecipeDetailOut(BaseModel):
     sns_caption: str
     image_url: str
     source_attribution: str
+    license_notice: LicenseNoticeOut | None = None
     status: RecipeStatus
     is_recommended: bool
     rating: int

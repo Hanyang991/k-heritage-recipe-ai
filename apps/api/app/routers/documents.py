@@ -1,12 +1,24 @@
-"""Heritage document search endpoint (spec FR-04 / 3.2)."""
+"""Heritage document search + detail endpoints (spec FR-04 / §3.1 / §3.2).
 
-from fastapi import APIRouter, Depends
+* ``GET /v1/documents`` — keyword + facet search over the ingested
+  heritage corpus. Returns a list of lightweight :class:`DocumentOut`
+  rows (no original_text / modern_text bodies — those are big enough
+  to dominate the payload and only the detail page renders them).
+* ``GET /v1/documents/{id}`` — full document detail (spec §3.1 / §13):
+  the classical Korean ``original_text``, the modern Korean
+  ``modern_text`` translation, the metadata, **and** a structured
+  KOGL-1 license notice with the pre-formatted "출처: ..."
+  attribution string so the frontend can render the spec-mandated
+  source line + license link inline.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.document import Document
-from app.schemas.document import DocumentOut
+from app.schemas.document import DocumentDetailOut, DocumentOut
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -40,12 +52,10 @@ def search_documents(
     return [DocumentOut.model_validate(r) for r in rows]
 
 
-@router.get("/{doc_id}", response_model=DocumentOut)
-def get_document(doc_id: str, db: Session = Depends(get_db)) -> DocumentOut:
+@router.get("/{doc_id}", response_model=DocumentDetailOut)
+def get_document(doc_id: str, db: Session = Depends(get_db)) -> DocumentDetailOut:
     doc = db.get(Document, doc_id)
     if doc is None:
-        from fastapi import HTTPException, status
-
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -54,4 +64,4 @@ def get_document(doc_id: str, db: Session = Depends(get_db)) -> DocumentOut:
                 "status": 404,
             },
         )
-    return DocumentOut.model_validate(doc)
+    return DocumentDetailOut.from_orm_model(doc)

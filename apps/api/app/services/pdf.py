@@ -2,6 +2,10 @@
 
 Uses reportlab to build a single-page recipe PDF in-memory. Free plan adds a
 watermark across the page.
+
+License footer (spec §3.1 / §13): every page that ships heritage-derived
+content carries a KOGL-1 attribution footer with the license URL so the
+PDF stays compliance-correct even when shared / printed out of the app.
 """
 
 from __future__ import annotations
@@ -15,6 +19,40 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph
 
 from app.models.recipe import Recipe
+from app.services.licensing import (
+    get_license_notice,
+    resolve_institution_from_attribution,
+)
+
+
+def _draw_license_footer(c: canvas.Canvas, recipe: Recipe, width: float) -> None:
+    """Draw the spec-§3.1 KOGL-1 attribution footer on the current page.
+
+    Two lines, bottom of page, small italic — same visual treatment used
+    on the heritage attestation certificate so the look stays consistent
+    across exports:
+
+    * Line 1: ``recipe.source_attribution`` (verbatim — already in the
+      spec-mandated "출처: OO 고문헌 (...)" shape).
+    * Line 2: the license name + URL from the registry so a recipient
+      auditing the PDF can verify the redistribution terms in one
+      click.
+
+    Falls back gracefully when ``source_attribution`` is empty (legacy
+    rows from before the heritage adapter was wired) by emitting only
+    the generic KOGL-1 disclaimer line.
+    """
+    institution = resolve_institution_from_attribution(recipe.source_attribution or "") or "unknown"
+    notice = get_license_notice(institution)
+    c.saveState()
+    c.setFont("Helvetica-Oblique", 8)
+    c.setFillColorRGB(0.35, 0.35, 0.35)
+    bottom = 1.2 * cm
+    if recipe.source_attribution:
+        c.drawCentredString(width / 2, bottom + 0.45 * cm, recipe.source_attribution)
+    license_line = f"{notice.name} · {notice.url}"
+    c.drawCentredString(width / 2, bottom, license_line)
+    c.restoreState()
 
 
 def _draw_watermark(c: canvas.Canvas, text: str) -> None:
@@ -99,6 +137,8 @@ def render_recipe_pdf(recipe: Recipe, watermark: bool = False) -> bytes:
             y -= 0.45 * cm
         y -= 0.2 * cm
 
+    _draw_license_footer(c, recipe, width)
+
     c.showPage()
     c.save()
     return buf.getvalue()
@@ -131,12 +171,21 @@ def render_certificate_pdf(recipe: Recipe) -> bytes:
         width / 2, height - 9.7 * cm, recipe.source_attribution or "공공누리 제1유형"
     )
 
+    # Pull the registry entry so the cert footer carries the full
+    # license name + URL — gives the holder a one-click path to verify
+    # KOGL-1 terms without having to look up the project docs.
+    institution = resolve_institution_from_attribution(recipe.source_attribution or "") or "unknown"
+    notice = get_license_notice(institution)
+
     c.setFont("Helvetica-Oblique", 9)
     c.drawCentredString(
         width / 2,
-        2.5 * cm,
-        "This certificate confirms the recipe was generated from sources licensed under KOGL Type 1.",
+        3.2 * cm,
+        f"This certificate confirms the recipe was generated from sources licensed under {notice.name}.",
     )
+    c.setFont("Helvetica", 8)
+    c.setFillColorRGB(0.35, 0.35, 0.35)
+    c.drawCentredString(width / 2, 2.4 * cm, notice.url)
 
     c.showPage()
     c.save()
