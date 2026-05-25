@@ -48,6 +48,7 @@ from app.services.vector_search.indexer import (
     heritage_doc_metadata,
     heritage_doc_restricts,
     heritage_doc_text,
+    vector_match_to_heritage_doc,
 )
 from app.services.vector_search.mock import MockVectorSearchAdapter
 from app.services.vector_search.vertex import (
@@ -174,4 +175,5 @@ __all__ = [
     "heritage_doc_metadata",
     "heritage_doc_restricts",
     "heritage_doc_text",
+    "vector_match_to_heritage_doc",
 ]

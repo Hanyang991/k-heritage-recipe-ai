@@ -168,6 +168,21 @@ VERTEX_VECTOR_INDEX_ENDPOINT_HOST_<NAMESPACE> # per-endpoint public domain
 
 Vertex AI requires OAuth bearer tokens (not the `?key=...` query param that Gemini accepts), so live mode also needs `VERTEX_PROJECT_ID` plus a `GOOGLE_OAUTH_ACCESS_TOKEN` env var (production replaces this with a metadata-server token provider passed to `VertexAIEmbeddingAdapter` / `VertexAIVectorSearchAdapter`). Same graceful-degrade contract as the heritage / LLM layers: any missing piece (project id, token, or all per-namespace bundles) degrades the factory to `MockVectorSearchAdapter` with a warning so recipe-generate stays available while ops finishes provisioning. Both Vertex adapters call the REST surface directly with `httpx` to avoid pulling in the heavyweight `google-cloud-aiplatform` SDK — same pattern as the Gemini and Naver DataLab adapters.
 
+### Hybrid heritage retrieval — keyword + semantic blend
+
+`recipe-generate` calls `get_heritage_adapter()` to ground its LLM prompt on archival documents. By default that returns the keyword-only adapter (`HERITAGE_RETRIEVAL_MODE=keyword`, byte-identical to pre-hybrid behaviour). Setting `HERITAGE_RETRIEVAL_MODE=hybrid` wraps the existing keyword adapter with `HybridHeritageAdapter`, which **also** runs `HeritageIndexer.query_all_sources` and blends both layers' results.
+
+| Layer | Strengths | Weaknesses |
+| --- | --- | --- |
+| Keyword (장서각 / 한국학자료포털 / NLK / 기호유학) | High precision on exact title / abstract hits | Misses synonyms, related concepts, OCR variants |
+| Semantic (Vertex AI Vector Search) | High recall, concept-aware, surfaces vocabulary-mismatched neighbours | Can drift onto loosely-related material |
+
+Blend score = `keyword_weight × keyword_score + (1 - keyword_weight) × semantic_score`. Default weights (`HERITAGE_HYBRID_KEYWORD_WEIGHT=0.6`, `HERITAGE_HYBRID_SEMANTIC_TOP_K=20`) keep keyword precision dominant while letting strong semantic-only hits surface. Region / period filters propagate to both layers — Vertex AI sees them as `restricts` AND-of-ORs, the keyword adapters use their native filter fields.
+
+Resilience contract mirrors `MultiSourceHeritageAdapter`: either layer failing in isolation is logged + skipped (the surviving layer's results still flow through); only an all-layers-fail event falls back to the keyword adapter's mock contract. `VectorIndexNotConfiguredError` is treated as an operator-visible config bug (namespace mismatch between the indexer and the vector store) and propagates loudly rather than being silently swallowed.
+
+Index population is **not** the hybrid adapter's responsibility. When the vector store is mock or empty, the semantic side contributes nothing and the hybrid adapter degenerates to keyword-only — `recipe-generate` keeps working with no extra credentials. The operational follow-up is a batch backfill job that crawls each source's corpus once and upserts via `HeritageIndexer.index_documents` (tracked separately in `todo.md` §1.3 follow-ups).
+
 ### Trend discovery pipeline
 
 The weekly trend dashboard (`/v1/trends`) is fed by one of three discovery modes, controlled by `TRENDS_DISCOVERY_SOURCE`:
