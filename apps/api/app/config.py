@@ -32,8 +32,11 @@ class Settings(BaseSettings):
     # API — NLK requires ``NLK_API_KEY`` (apply at
     # https://www.nl.go.kr/NL/contents/N31101030500.do); without a key the
     # factory degrades to the mock matcher even when ``HERITAGE_PROVIDER=live``.
-    # See todo.md §1.3.1 for the broader source roadmap.
-    heritage_live_source: Literal["jangseogak", "koreanstudies", "nlk"] = "jangseogak"
+    # ``gihohak`` uses the 기호유학 고문헌 통합정보시스템 (giho.cnu.ac.kr)
+    # Open API operated by 충남대 — fully open, no key required (same as
+    # 장서각 / 한국학자료포털). See todo.md §1.3.1 for the broader source
+    # roadmap.
+    heritage_live_source: Literal["jangseogak", "koreanstudies", "nlk", "gihohak"] = "jangseogak"
     payments_provider: Literal["mock", "live"] = "mock"
     trends_provider: Literal["mock", "live"] = "mock"
     trends_discovery_source: Literal["curated", "shopping_insight", "open"] = "curated"
@@ -71,6 +74,12 @@ class Settings(BaseSettings):
     # ``HERITAGE_LIVE_SOURCE=nlk`` — see `app/services/heritage/__init__.py`.
     nlk_api_key: str = ""
     nlk_base_url: str = "https://www.nl.go.kr"
+    # 기호유학 고문헌 통합정보시스템 (충남대): http://giho.cnu.ac.kr
+    # Fully open (no API key required), exposed via
+    # ``/api/literature/search.do``. Endpoint defaults to HTTP because the
+    # upstream TLS chain has historically been incomplete; operators can
+    # override to HTTPS if/when CNU rolls out a valid cert.
+    gihohak_base_url: str = "http://giho.cnu.ac.kr"
     nfm_api_key: str = ""
     culture_api_key: str = ""
     toss_secret_key: str = ""

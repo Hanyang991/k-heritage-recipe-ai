@@ -115,19 +115,22 @@ Live adapters for LLM / payments are scaffolded but raise `NotImplementedError` 
 
 ### Heritage live sources matrix
 
-`HERITAGE_LIVE_SOURCE` selects which open-API source the live adapter routes through. todo.md §1.3.1 is rolling these out incrementally; the next two (국사편찬위 + 기호유학) will extend the same matrix:
+`HERITAGE_LIVE_SOURCE` selects which open-API source the live adapter routes through. todo.md §1.3.1 is rolling these out incrementally; only 국사편찬위 (« `nihc` », deferred — see todo.md notes) remains outstanding:
 
 | Value | Adapter | Endpoint | Format | API key |
 | --- | --- | --- | --- | --- |
 | `jangseogak` (default) | `LiveHeritageAdapter` | `https://jsg.aks.ac.kr/api/search` | JSON | none (open) |
 | `koreanstudies` | `LiveKoreanstudiesAdapter` | `https://kostma.aks.ac.kr/OpenAPI/request.aspx` | XML | none (open) |
 | `nlk` | `LiveNlkAdapter` | `https://www.nl.go.kr/NL/search/openApi/search.do` | XML | **`NLK_API_KEY` required** |
+| `gihohak` | `LiveGihohakAdapter` | `http://giho.cnu.ac.kr/api/literature/search.do` | XML | none (open) |
 
 **한국학자료포털 (PR #35).** Sister portal to 장서각 — same operating org (한국학중앙연구원), but covers 권역별 (regional) and 민간 (private collections) high-resolution materials instead of the royal archive that 장서각 indexes. The adapter is XML-based (장서각 is JSON), and `KoreanstudiesSearchClient` parses the `<ksm>` envelope into the same `HeritageDoc` shape that recipe-generate already consumes. Region is populated from `작성지역 @현재주소` (a richer signal than 장서각, which doesn't expose 지역 in its search response).
 
-**국립중앙도서관 / NLK (this PR).** The standardised national-scale source — operator of **KORCIS** (한국고문헌종합목록, federated catalogue of 고전적 across every Korean institution) and **KOLIS-NET** (국가자료종합목록). KORCIS records expose a `control_no` that is stable across institutions, which is what makes NLK the natural dedupe anchor for the planned `MultiSourceHeritageAdapter`. The endpoint requires an API key (apply at <https://www.nl.go.kr/NL/contents/N31101030500.do>, admin approval) — when `NLK_API_KEY` is unset the factory transparently degrades to the mock matcher even with `HERITAGE_LIVE_SOURCE=nlk` set, so recipe-generate stays available while the key is being provisioned. The adapter defaults `category=고문헌` since this is a heritage stack, parses both modern (`"2012"` / `"201201"`) and 고문헌-style (`"순조 14년(1814년)"`) `pub_year_info` shapes, and surfaces upstream `<error_code>` codes (010 / 011 / 012 / 013 / 014) on `NlkAPIError` so auth issues can be distinguished from transient outages in logs.
+**국립중앙도서관 / NLK (PR #36).** The standardised national-scale source — operator of **KORCIS** (한국고문헌종합목록, federated catalogue of 고전적 across every Korean institution) and **KOLIS-NET** (국가자료종합목록). KORCIS records expose a `control_no` that is stable across institutions, which is what makes NLK the natural dedupe anchor for the planned `MultiSourceHeritageAdapter`. The endpoint requires an API key (apply at <https://www.nl.go.kr/NL/contents/N31101030500.do>, admin approval) — when `NLK_API_KEY` is unset the factory transparently degrades to the mock matcher even with `HERITAGE_LIVE_SOURCE=nlk` set, so recipe-generate stays available while the key is being provisioned. The adapter defaults `category=고문헌` since this is a heritage stack, parses both modern (`"2012"` / `"201201"`) and 고문헌-style (`"순조 14년(1814년)"`) `pub_year_info` shapes, and surfaces upstream `<error_code>` codes (010 / 011 / 012 / 013 / 014) on `NlkAPIError` so auth issues can be distinguished from transient outages in logs.
 
-All three adapters share identical period bucketing (조선전기 ≤ 1592 / 조선후기 1593–1896 / 근대 ≥ 1897) and identical rank-decay (top hit ≈ 0.94 → floor 0.40), so cross-source result blending will not require renormalising scores. All three degrade gracefully to `MockHeritageAdapter` on transport failures, upstream error envelopes, or unparseable bodies.
+**기호유학 고문헌 통합정보시스템 (this PR).** The regional specialist of the four sources. Operated by 충남대 (Chungnam National University) and curated around the 기호유학 (畿湖儒學) school — the Confucian lineage centred on 충청도 + Han River basin gentry / 서원 holdings. Coverage: 고서 (육서심원 포함), 고문서, 금석문, plus an 인물 네트워크 that the other three archives lack. Fully open (no key, no header). The adapter defaults `type=OB` (고서) since classical books carry more food/ritual content than legal/contract documents, parses `<created>` in both `"미상"` and integer-year shapes, and attaches a static `region="충청"` so cross-source region filters route into it — the curation scope is uniform.
+
+All four adapters share identical period bucketing (조선전기 ≤ 1592 / 조선후기 1593–1896 / 근대 ≥ 1897) and identical rank-decay (top hit ≈ 0.94 → floor 0.40), so cross-source result blending will not require renormalising scores. All four degrade gracefully to `MockHeritageAdapter` on transport failures, upstream error envelopes, or unparseable bodies.
 
 ### Trend discovery pipeline
 

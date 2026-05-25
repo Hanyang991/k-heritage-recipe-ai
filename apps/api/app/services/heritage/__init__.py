@@ -11,18 +11,24 @@ adapter routes through:
   ``NLK_API_KEY``** — when the key is missing the factory transparently
   degrades to the mock matcher (with a one-time warning) instead of
   failing recipe-generate at boot.
+* ``gihohak`` — 기호유학 고문헌 통합정보시스템 (giho.cnu.ac.kr,
+  충남대, PR #37). Fully open (no API key required) like 장서각 and
+  한국학자료포털. Adds 충청권 고서/고문서/금석문 + 인물 네트워크
+  coverage that the other three lack.
 
-See todo.md §1.3.1 for the broader source roadmap; next additions will
-be 국사편찬위 + 기호유학.
+See todo.md §1.3.1 for the broader source roadmap; 국사편찬위
+(`nihc`) remains the final outstanding source.
 """
 
 from functools import lru_cache
 
 from app.config import get_settings
 from app.services.heritage.base import HeritageAdapter
+from app.services.heritage.gihohak import GihohakSearchClient
 from app.services.heritage.jangseogak import JangseogakSearchClient
 from app.services.heritage.koreanstudies import KoreanstudiesSearchClient
 from app.services.heritage.live import LiveHeritageAdapter
+from app.services.heritage.live_gihohak import LiveGihohakAdapter
 from app.services.heritage.live_koreanstudies import LiveKoreanstudiesAdapter
 from app.services.heritage.live_nlk import LiveNlkAdapter
 from app.services.heritage.mock import MockHeritageAdapter
@@ -54,6 +60,10 @@ def get_heritage_adapter() -> HeritageAdapter:
         )
         return LiveNlkAdapter(client=nlk_client)
 
+    if settings.heritage_live_source == "gihohak":
+        gihohak_client = GihohakSearchClient(base_url=settings.gihohak_base_url)
+        return LiveGihohakAdapter(client=gihohak_client)
+
     # Default branch: jangseogak. Keep this as the explicit fallback so
     # any future un-handled Literal value loudly degrades to the most
     # battle-tested adapter rather than silently breaking recipe-generate.
@@ -63,6 +73,7 @@ def get_heritage_adapter() -> HeritageAdapter:
 
 __all__ = [
     "HeritageAdapter",
+    "LiveGihohakAdapter",
     "LiveHeritageAdapter",
     "LiveKoreanstudiesAdapter",
     "LiveNlkAdapter",
