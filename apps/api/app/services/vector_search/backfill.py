@@ -189,9 +189,7 @@ class HeritageBackfillRunner:
                 seen[key] = doc
 
         for institution, _ in seen.keys():
-            report.docs_per_source[institution] = (
-                report.docs_per_source.get(institution, 0) + 1
-            )
+            report.docs_per_source[institution] = report.docs_per_source.get(institution, 0) + 1
         report.unique_docs_collected = len(seen)
 
         docs = list(seen.values())
@@ -250,13 +248,13 @@ def run_heritage_backfill(
             embedder=get_embedding_adapter(),
             vector_store=get_vector_search_adapter(),
         ),
-        queries=list(queries) if queries is not None else (settings.heritage_backfill_queries_list or None),
+        queries=list(queries)
+        if queries is not None
+        else (settings.heritage_backfill_queries_list or None),
         per_query_limit=per_query_limit
         if per_query_limit is not None
         else settings.heritage_backfill_per_query_limit,
-        batch_size=batch_size
-        if batch_size is not None
-        else settings.heritage_backfill_batch_size,
+        batch_size=batch_size if batch_size is not None else settings.heritage_backfill_batch_size,
     )
     return runner.run()
 

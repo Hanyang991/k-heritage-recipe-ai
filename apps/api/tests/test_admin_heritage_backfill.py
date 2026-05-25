@@ -86,9 +86,7 @@ def test_admin_empty_body_uses_settings_defaults(client: TestClient) -> None:
     assert body["total_upserted"] == 2
 
     # Confirm overrides were all None (settings drive the run).
-    mock_backfill.assert_called_once_with(
-        queries=None, per_query_limit=None, batch_size=None
-    )
+    mock_backfill.assert_called_once_with(queries=None, per_query_limit=None, batch_size=None)
 
 
 def test_admin_can_override_queries_and_limits(client: TestClient) -> None:
@@ -108,9 +106,7 @@ def test_admin_can_override_queries_and_limits(client: TestClient) -> None:
             },
         )
     assert r.status_code == 200, r.text
-    mock_backfill.assert_called_once_with(
-        queries=["떡", "전"], per_query_limit=12, batch_size=7
-    )
+    mock_backfill.assert_called_once_with(queries=["떡", "전"], per_query_limit=12, batch_size=7)
 
 
 def test_admin_invalid_per_query_limit_rejected_at_schema(

@@ -176,9 +176,7 @@ def test_run_passes_per_query_limit_through_to_adapter() -> None:
 
 def test_run_chunks_docs_per_batch_size() -> None:
     indexer, _ = _make_indexer(["jangseogak"])
-    adapter = _ScriptedHeritageAdapter(
-        {"q": [("jangseogak", f"d{i}") for i in range(7)]}
-    )
+    adapter = _ScriptedHeritageAdapter({"q": [("jangseogak", f"d{i}") for i in range(7)]})
     calls: list[int] = []
     real_index = indexer.index_documents
 
@@ -224,9 +222,7 @@ def test_per_query_failures_are_isolated() -> None:
 def test_unknown_namespace_docs_are_skipped_via_indexer() -> None:
     # Indexer only knows jangseogak; koreanstudies docs should land in skipped_unknown_namespace.
     indexer, _ = _make_indexer(["jangseogak"])
-    adapter = _ScriptedHeritageAdapter(
-        {"q": [("jangseogak", "a"), ("koreanstudies", "k1")]}
-    )
+    adapter = _ScriptedHeritageAdapter({"q": [("jangseogak", "a"), ("koreanstudies", "k1")]})
     runner = HeritageBackfillRunner(
         heritage_adapter=adapter,
         indexer=indexer,
@@ -386,9 +382,7 @@ def test_run_heritage_backfill_explicit_args_override_settings(
         ),
         patch.object(HeritageBackfillRunner, "__init__", spy_init),
     ):
-        run_heritage_backfill(
-            queries=["override"], per_query_limit=99, batch_size=42
-        )
+        run_heritage_backfill(queries=["override"], per_query_limit=99, batch_size=42)
 
     assert captured["queries"] == ["override"]
     assert captured["per_query_limit"] == 99
