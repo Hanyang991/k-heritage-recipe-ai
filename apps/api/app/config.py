@@ -115,6 +115,30 @@ class Settings(BaseSettings):
 
     cors_allow_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    # ------------------------------------------------------------------
+    # Vertex AI embedding + Vector Search (per-source namespace indexing)
+    # ------------------------------------------------------------------
+    # When ``EMBEDDING_PROVIDER=live`` the API calls Vertex AI's
+    # publisher-model ``:predict`` endpoint for ``text-embedding-005``
+    # (or whichever ``VERTEX_EMBEDDING_MODEL`` overrides). Missing
+    # ``VERTEX_PROJECT_ID`` / ``GOOGLE_OAUTH_ACCESS_TOKEN`` degrades to
+    # the mock embedder at boot — same contract as the heritage/LLM
+    # factories. See ``app/services/embeddings/__init__.py``.
+    embedding_provider: Literal["mock", "live"] = "mock"
+    # ``VECTOR_SEARCH_PROVIDER=live`` enables the Vertex AI Vector
+    # Search REST adapter. Per-namespace ``VERTEX_VECTOR_INDEX_*`` env
+    # vars wire each source to its own Vertex index / deployed index
+    # / index endpoint — see ``app/services/vector_search/__init__.py``.
+    vector_search_provider: Literal["mock", "live"] = "mock"
+    vertex_project_id: str = ""
+    vertex_location: str = "us-central1"
+    vertex_embedding_model: str = "text-embedding-005"
+    vertex_embedding_dimension: int = 768
+    # Comma-separated list of source-keyed namespaces used by
+    # ``HeritageIndexer`` / ``VertexAIVectorSearchAdapter``. Matches
+    # the heritage roadmap in ``todo.md`` §1.3.1.
+    vertex_vector_namespaces: str = "jangseogak,koreanstudies,nlk,gihohak,nihc"
+
     free_plan_monthly_recipe_quota: int = 3
     free_plan_hourly_rate_limit: int = 10
 
@@ -125,6 +149,10 @@ class Settings(BaseSettings):
     @property
     def heritage_multi_sources_list(self) -> list[str]:
         return [s.strip() for s in self.heritage_multi_sources.split(",") if s.strip()]
+
+    @property
+    def vertex_vector_namespaces_list(self) -> list[str]:
+        return [s.strip() for s in self.vertex_vector_namespaces.split(",") if s.strip()]
 
 
 @lru_cache
