@@ -13,7 +13,7 @@ from app.models.recipe import Recipe, RecipeStatus
 from app.models.subscription import Plan
 from app.models.user import User
 from app.schemas.document import DocumentMatch as DocumentMatchSchema
-from app.schemas.document import DocumentOut
+from app.schemas.document import DocumentOut, license_notice_from_recipe_inputs
 from app.schemas.recipe import (
     IngredientLine,
     RecipeCandidate,
@@ -113,6 +113,14 @@ def generate_recipes(
     for r in persisted:
         db.refresh(r)
 
+    # First matched-doc institution drives the structured license
+    # notice on every candidate (the LLM prompt cites the same set of
+    # matched docs for all 3 candidates, and the spec-§3.1 attribution
+    # uses the same KOGL-1 profile regardless of which specific match
+    # the LLM emphasised). Falls back to scanning the recipe's own
+    # ``source_attribution`` text inside ``license_notice_from_recipe_inputs``.
+    candidate_institution = matches[0].document.institution if matches else None
+
     # Build response
     response_candidates = [
         RecipeCandidate(
@@ -124,6 +132,10 @@ def generate_recipes(
             time_minutes=r.time_minutes,
             estimated_cost_krw=r.estimated_cost_krw,
             source_attribution=r.source_attribution,
+            license_notice=license_notice_from_recipe_inputs(
+                institution=candidate_institution,
+                attribution=r.source_attribution,
+            ),
             is_recommended=r.is_recommended,
             image_url=r.image_url,
             status=r.status,
@@ -278,6 +290,13 @@ def _get_owned_recipe(db: Session, recipe_id: str, user: User) -> Recipe:
 
 
 def _to_detail(recipe: Recipe) -> RecipeDetailOut:
+    # Prefer the institution off the linked source_document when it
+    # exists (most heritage-grounded recipes have one via ``source_document_id``);
+    # ``license_notice_from_recipe_inputs`` falls back to scanning
+    # ``recipe.source_attribution`` so legacy rows without a linked
+    # document still get a correct KOGL-1 notice.
+    source_doc = recipe.source_document
+    institution = source_doc.institution if source_doc is not None else None
     return RecipeDetailOut(
         id=recipe.id,
         name=recipe.name,
@@ -305,6 +324,10 @@ def _to_detail(recipe: Recipe) -> RecipeDetailOut:
         sns_caption=recipe.sns_caption,
         image_url=recipe.image_url,
         source_attribution=recipe.source_attribution,
+        license_notice=license_notice_from_recipe_inputs(
+            institution=institution,
+            attribution=recipe.source_attribution,
+        ),
         status=recipe.status,
         is_recommended=recipe.is_recommended,
         rating=recipe.rating,

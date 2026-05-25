@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 
+from app.services.licensing import format_attribution
 from app.services.llm.base import (
     GeneratedIngredient,
     GeneratedRecipe,
@@ -35,13 +36,22 @@ def _seed_int(payload: GenerateRecipesInput, salt: str) -> int:
 
 
 def _doc_source(payload: GenerateRecipesInput, index: int) -> str:
+    """Build the spec-§3.1 attribution string for a mock recipe.
+
+    Routes through :func:`~app.services.licensing.format_attribution`
+    so the mock emits the same KOGL-1-compliant shape ("출처: 음식디미
+    방 (1670) · 한국학중앙연구원 장서각") as the live Gemini adapter.
+    That keeps the structured ``license_notice`` reverse-lookup happy
+    and means the mock and the live path render identically in PDF /
+    SNS outputs.
+    """
     if payload.matched_documents and index < len(payload.matched_documents):
         doc = payload.matched_documents[index]
-        title = doc.get("title", "")
-        institution = doc.get("institution", "")
-        year = doc.get("year")
-        year_suffix = f" ({year})" if year else ""
-        return f"출처: {title}{year_suffix} · {institution}"
+        return format_attribution(
+            doc.get("institution", ""),
+            title=doc.get("title", ""),
+            year=doc.get("year"),
+        )
     return "출처: 공공누리 제1유형 데이터"
 
 
