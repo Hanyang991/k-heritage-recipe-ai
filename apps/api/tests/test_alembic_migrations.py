@@ -64,9 +64,9 @@ def fresh_sqlite_url(monkeypatch):
         pass
 
 
-def test_alembic_script_directory_resolves_two_revisions() -> None:
-    """The baseline + pgvector migrations should be the only two heads
-    on the linear revision graph.
+def test_alembic_script_directory_resolves_linear_revisions() -> None:
+    """The baseline + pgvector + recipe-embedding migrations form a
+    linear revision chain with a single head.
     """
     cfg = _build_alembic_config("sqlite://")
     script = ScriptDirectory.from_config(cfg)
@@ -74,10 +74,11 @@ def test_alembic_script_directory_resolves_two_revisions() -> None:
     assert {rev.revision for rev in revisions} == {
         "0001_baseline",
         "0002_pgvector_native_knn",
+        "0003_recipe_embedding",
     }
-    # The pgvector migration depends on the baseline.
-    pgvector_rev = script.get_revision("0002_pgvector_native_knn")
-    assert pgvector_rev.down_revision == "0001_baseline"
+    # Each revision points back to its immediate predecessor.
+    assert script.get_revision("0002_pgvector_native_knn").down_revision == "0001_baseline"
+    assert script.get_revision("0003_recipe_embedding").down_revision == "0002_pgvector_native_knn"
 
 
 def test_upgrade_head_creates_full_baseline_schema(fresh_sqlite_url) -> None:

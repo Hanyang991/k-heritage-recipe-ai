@@ -206,6 +206,22 @@ class Settings(BaseSettings):
     free_plan_monthly_recipe_quota: int = 3
     free_plan_hourly_rate_limit: int = 10
 
+    # ------------------------------------------------------------------
+    # Related-recipe recommendations (todo §1.4)
+    # ------------------------------------------------------------------
+    # ``vector`` (default) — embed every recipe (via
+    #     ``EMBEDDING_PROVIDER``) and rank candidates by cosine
+    #     similarity. Falls back to the tag scorer for a given query
+    #     when the seed has no stored embedding yet (e.g. a brand-new
+    #     deployment hasn't run ``backfill_recipe_embeddings`` against
+    #     pre-existing recipes).
+    # ``tag`` — original scorer from PR #46 (categorical exact matches
+    #     + ingredient Jaccard). Useful for A/B comparison, smoke
+    #     tests, or environments that don't want to pay embedding
+    #     latency on every recipe generate.
+    # See ``app.services.recommendation``.
+    recommendation_provider: Literal["tag", "vector"] = "vector"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
