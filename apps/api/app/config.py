@@ -173,6 +173,28 @@ class Settings(BaseSettings):
     # a chance against strong keyword hits after blending.
     heritage_hybrid_semantic_top_k: int = 20
 
+    # ------------------------------------------------------------------
+    # Heritage indexing backfill (`app/jobs/backfill_heritage_index.py`)
+    # ------------------------------------------------------------------
+    # Comma-separated seed queries the backfill runner walks through the
+    # keyword heritage adapter. Empty (default) → the
+    # ``DEFAULT_BACKFILL_QUERIES`` curated Korean food / ritual term list
+    # baked into :mod:`app.services.vector_search.backfill`. Override
+    # to scope the run to a specific subset (e.g. when re-indexing a
+    # single source after a gap).
+    heritage_backfill_queries: str = ""
+    # Per-query result limit handed to ``HeritageAdapter.search``.
+    # Defaults to 50 — high enough that a multi-source adapter's
+    # per-source rank decay covers most of each source's top hits,
+    # low enough that a botched seed query doesn't drag in 5000 weak
+    # matches per source.
+    heritage_backfill_per_query_limit: int = 50
+    # Number of docs per :meth:`HeritageIndexer.index_documents` call.
+    # Bounded so a single embedding-API failure only loses one chunk's
+    # worth of progress rather than the whole walk. Gemini's free-tier
+    # batch endpoint caps at 100 inputs/request, so 50 keeps headroom.
+    heritage_backfill_batch_size: int = 50
+
     free_plan_monthly_recipe_quota: int = 3
     free_plan_hourly_rate_limit: int = 10
 
@@ -187,6 +209,10 @@ class Settings(BaseSettings):
     @property
     def vertex_vector_namespaces_list(self) -> list[str]:
         return [s.strip() for s in self.vertex_vector_namespaces.split(",") if s.strip()]
+
+    @property
+    def heritage_backfill_queries_list(self) -> list[str]:
+        return [q.strip() for q in self.heritage_backfill_queries.split(",") if q.strip()]
 
 
 @lru_cache

@@ -572,3 +572,29 @@ def test_factory_honours_weight_override(monkeypatch) -> None:
     assert isinstance(adapter, HybridHeritageAdapter)
     assert adapter.keyword_weight == 0.3
     assert adapter.semantic_weight == pytest.approx(0.7)
+
+
+def test_keyword_factory_bypasses_hybrid_wrap_even_when_hybrid_mode_is_on(
+    monkeypatch,
+) -> None:
+    """``get_keyword_heritage_adapter`` must NOT wrap in HybridHeritageAdapter.
+
+    Backfill jobs depend on this — wrapping the keyword adapter in
+    the hybrid wrapper during backfill would recurse through the
+    still-empty semantic index and produce no useful work.
+    """
+    from app.config import get_settings
+    from app.services.heritage import (
+        get_heritage_adapter,
+        get_keyword_heritage_adapter,
+    )
+
+    get_settings.cache_clear()
+    get_heritage_adapter.cache_clear()
+    monkeypatch.setenv("HERITAGE_RETRIEVAL_MODE", "hybrid")
+    try:
+        adapter = get_keyword_heritage_adapter()
+    finally:
+        get_settings.cache_clear()
+        get_heritage_adapter.cache_clear()
+    assert not isinstance(adapter, HybridHeritageAdapter)

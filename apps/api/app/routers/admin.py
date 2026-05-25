@@ -10,10 +10,12 @@ from app.db.session import get_db
 from app.jobs.refresh_trends import refresh_trends
 from app.models.recipe import Recipe, RecipeStatus
 from app.models.user import User
+from app.schemas.heritage_backfill import HeritageBackfillRequest, HeritageBackfillResponse
 from app.schemas.recipe import RecipeListItem, RecipeStatusUpdate
 from app.schemas.trend import TrendDebugResponse, TrendRefreshResponse
 from app.services.trends import TrendsAdapterError, get_trend_discovery
 from app.services.trends.debug import build_debug_response
+from app.services.vector_search.backfill import run_heritage_backfill
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -101,6 +103,52 @@ def refresh_trends_endpoint(
         inserted=result.inserted,
         updated=result.updated,
     )
+
+
+@router.post(
+    "/heritage/index/backfill",
+    response_model=HeritageBackfillResponse,
+)
+def backfill_heritage_index_endpoint(
+    payload: HeritageBackfillRequest | None = None,
+    admin: User = Depends(get_current_admin),
+) -> HeritageBackfillResponse:
+    """Run the heritage corpus → vector index backfill.
+
+    Walks the configured seed queries through the keyword heritage
+    adapter, deduplicates the collected docs across queries, and feeds
+    them to :class:`HeritageIndexer` for embedding + upsert. Required
+    first-time step after a deployment switches to
+    ``HERITAGE_RETRIEVAL_MODE=hybrid`` so the semantic side has
+    documents to retrieve.
+
+    Idempotent: re-running with the same seed pool refreshes the
+    vector store in place (upserts are keyed by datapoint_id).
+
+    Body is optional — empty POST uses ``HERITAGE_BACKFILL_QUERIES`` /
+    ``HERITAGE_BACKFILL_PER_QUERY_LIMIT`` /
+    ``HERITAGE_BACKFILL_BATCH_SIZE`` straight from settings.
+    """
+    _ = admin
+    overrides = payload or HeritageBackfillRequest()
+    try:
+        report = run_heritage_backfill(
+            queries=overrides.queries,
+            per_query_limit=overrides.per_query_limit,
+            batch_size=overrides.batch_size,
+        )
+    except ValueError as exc:
+        # Surfaced by ``HeritageBackfillRunner`` for invalid overrides
+        # (empty query pool, non-positive limits).
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "INVALID_BACKFILL_CONFIG",
+                "message": str(exc),
+                "status": 400,
+            },
+        ) from exc
+    return HeritageBackfillResponse(**report.as_dict())
 
 
 @router.get("/trends/debug", response_model=TrendDebugResponse)
