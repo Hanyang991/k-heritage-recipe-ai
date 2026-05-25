@@ -1,11 +1,17 @@
 """Vector-search adapter factory.
 
-Mock vs live is selected by :attr:`Settings.vector_search_provider`:
+Mock vs Postgres vs Vertex is selected by
+:attr:`Settings.vector_search_provider`:
 
 * ``mock`` (default) — :class:`MockVectorSearchAdapter`. No network
   I/O, deterministic. Used for tests, local dev, and as the
-  graceful-degrade target when ``live`` is requested but Vertex AI
-  Vector Search resources aren't fully provisioned.
+  graceful-degrade target when ``live`` / ``pgvector`` are requested
+  but their backing resources aren't available.
+* ``pgvector`` — :class:`PgVectorSearchAdapter` storing embeddings
+  in the project's existing Postgres database (no new infrastructure
+  required). The **free** path — use this alongside
+  ``EMBEDDING_PROVIDER=gemini`` for a zero-cost hybrid retrieval
+  stack. See ``app/services/vector_search/pgvector.py``.
 * ``live`` — :class:`VertexAIVectorSearchAdapter` using the REST
   endpoints documented in
   :mod:`app.services.vector_search.vertex`. Each source maps to its
@@ -51,6 +57,7 @@ from app.services.vector_search.indexer import (
     vector_match_to_heritage_doc,
 )
 from app.services.vector_search.mock import MockVectorSearchAdapter
+from app.services.vector_search.pgvector import PgVectorSearchAdapter
 from app.services.vector_search.vertex import (
     VectorIndexConfig,
     VertexAIVectorSearchAdapter,
@@ -124,8 +131,19 @@ def get_vector_search_adapter() -> VectorSearchAdapter:
         # namespace" invariant intact under aggressive overrides.
         namespaces = ["jangseogak"]
 
-    if settings.vector_search_provider != "live":
+    if settings.vector_search_provider == "mock":
         return MockVectorSearchAdapter(namespaces=namespaces)
+
+    if settings.vector_search_provider == "pgvector":
+        # Import here to avoid pulling SQLAlchemy session machinery into
+        # the import graph when the project is configured with
+        # ``VECTOR_SEARCH_PROVIDER=mock`` (e.g. tests that don't touch DB).
+        from app.db.session import SessionLocal
+
+        return PgVectorSearchAdapter(
+            session_factory=SessionLocal,
+            namespaces=namespaces,
+        )
 
     if not settings.vertex_project_id:
         logger.warning(
@@ -163,6 +181,7 @@ __all__ = [
     "HeritageIndexer",
     "IndexResult",
     "MockVectorSearchAdapter",
+    "PgVectorSearchAdapter",
     "VectorDatapoint",
     "VectorIndexConfig",
     "VectorIndexNotConfiguredError",
