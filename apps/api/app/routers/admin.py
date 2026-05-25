@@ -7,11 +7,19 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_admin
 from app.db.session import get_db
+from app.jobs.backfill_recipe_embeddings import (
+    DEFAULT_BATCH_SIZE as DEFAULT_RECIPE_EMBEDDING_BATCH_SIZE,
+)
+from app.jobs.backfill_recipe_embeddings import run_recipe_embedding_backfill
 from app.jobs.refresh_trends import refresh_trends
 from app.models.recipe import Recipe, RecipeStatus
 from app.models.user import User
 from app.schemas.heritage_backfill import HeritageBackfillRequest, HeritageBackfillResponse
 from app.schemas.recipe import RecipeListItem, RecipeStatusUpdate
+from app.schemas.recipe_embedding_backfill import (
+    RecipeEmbeddingBackfillRequest,
+    RecipeEmbeddingBackfillResponse,
+)
 from app.schemas.trend import TrendDebugResponse, TrendRefreshResponse
 from app.services.trends import TrendsAdapterError, get_trend_discovery
 from app.services.trends.debug import build_debug_response
@@ -183,3 +191,37 @@ def trends_debug_endpoint(
             },
         ) from exc
     return build_debug_response(discovery, today=today, limit=limit)
+
+
+@router.post(
+    "/recipes/embeddings/backfill",
+    response_model=RecipeEmbeddingBackfillResponse,
+)
+def backfill_recipe_embeddings_endpoint(
+    payload: RecipeEmbeddingBackfillRequest | None = None,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+) -> RecipeEmbeddingBackfillResponse:
+    """Re-embed the recipe corpus through the configured embedding provider.
+
+    Default behaviour (``force=false``, empty body) only embeds recipes
+    that still have ``embedding_values=NULL`` — safe to run on a hot
+    deployment because the recipe-generate hook already keeps fresh
+    rows embedded; this just catches the back catalogue.
+
+    ``force=true`` re-embeds every recipe. Required after:
+
+    * Changing the canonical embedding text format in
+      :func:`app.services.recipe_embeddings.compute_recipe_embedding_text`.
+    * Swapping ``EMBEDDING_PROVIDER`` (mock → gemini → live) so the
+      stored vectors come from a new model.
+    """
+    _ = admin
+    overrides = payload or RecipeEmbeddingBackfillRequest()
+    batch_size = overrides.batch_size or DEFAULT_RECIPE_EMBEDDING_BATCH_SIZE
+    report = run_recipe_embedding_backfill(
+        session=db,
+        batch_size=batch_size,
+        force=overrides.force,
+    )
+    return RecipeEmbeddingBackfillResponse(**report.as_dict())

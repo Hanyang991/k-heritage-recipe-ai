@@ -29,6 +29,7 @@ from app.services.heritage import get_heritage_adapter
 from app.services.llm import get_llm_adapter
 from app.services.llm.base import GenerateRecipesInput
 from app.services.pdf import render_certificate_pdf, render_recipe_pdf
+from app.services.recipe_embeddings import store_recipe_embedding
 from app.services.recommendation import (
     DEFAULT_RELATED_LIMIT,
     MAX_RELATED_LIMIT,
@@ -118,6 +119,15 @@ def generate_recipes(
     db.commit()
     for r in persisted:
         db.refresh(r)
+
+    # Embed each new recipe so the related-recipes vector path can rank
+    # against it on the very next request. Embedding failure is non-fatal
+    # — ``store_recipe_embedding`` leaves ``embedding_values=None`` and
+    # the recommendation service silently falls back to the tag scorer
+    # for that seed until the next backfill run.
+    for r in persisted:
+        store_recipe_embedding(db, r)
+    db.commit()
 
     # First matched-doc institution drives the structured license
     # notice on every candidate (the LLM prompt cites the same set of

@@ -1,25 +1,35 @@
 """Related-recipe recommendation service (todo §1.4 "관련 레시피 추천").
 
-Implements a **tag + ingredient overlap** scorer so the frontend can show
-"이런 레시피는 어때요?" cards next to a seed recipe without any external
-infrastructure dependency. The shape of the public function
-(:func:`find_related_recipes`) is intentionally identical to what a future
-vector-similarity implementation would expose — the router only knows about
-``RecipeRecommendation`` records, so swapping the backend to embeddings
-(via the existing ``app.services.embeddings`` + ``app.services.vector_search``
-adapters) later is a single-file change.
+Two scorers are available behind the single public entry point
+:func:`find_related_recipes`:
 
-Why tag-based first (not vector first):
+* **vector** (default) — cosine similarity over Gemini / Vertex /
+  mock embeddings stored on ``recipes.embedding_values``. Uses the
+  existing ``app.services.embeddings`` adapter so swapping providers
+  (mock → Gemini → Vertex) is a settings change rather than a code
+  change. The seed and every eligible candidate are run through
+  :func:`app.services.recipe_embeddings.cosine_similarity`. Score
+  range is ``(-1, 1]`` for L2-normalised vectors, but in practice we
+  drop everything <= 0 so the panel never surfaces unrelated content.
+* **tag** — categorical exact-match weights + ingredient Jaccard
+  scorer originally shipped in PR #46. Kept available behind
+  ``RECOMMENDATION_PROVIDER=tag`` for A/B comparison, smoke testing,
+  and as a graceful fallback when the seed has no stored embedding
+  yet (e.g. recipes generated before this feature shipped).
 
-* The user-recipe corpus is small (per-user O(N), platform-wide O(N×M)) so
-  Jaccard / categorical overlap finishes in <50ms cold-cache on SQLite —
-  vector indexing latency would dominate at this scale.
-* The Recipe model already carries dense categorical signal (region / era /
-  diet / menu_type / keyword + ingredient lines) that maps 1:1 to user
-  intent. Embeddings would mostly re-derive the same signal from free text.
-* Tag scoring is fully deterministic, so it plays nicely with the existing
-  pytest fixtures (mock LLM / mock heritage) without requiring a vector
-  index to be backfilled in test setup.
+The public function signature does not change between providers: the
+router and the response model only know about ``RecipeRecommendation``
+records. Visibility / ordering / limit semantics are identical.
+
+Why keep both? The user-recipe corpus is small at MVP scale
+(per-user O(N), platform-wide O(N×M)) so the tag scorer remains a
+useful baseline — it finishes in <50ms cold-cache on SQLite without
+any embedding round-trip and produces deterministic scores that play
+nicely with the existing pytest fixtures (mock LLM / mock heritage).
+For production traffic the vector path is preferred because it
+captures soft synonyms ("쑥" / "애엽", "떡" / "경단") that tag matches
+cannot, but the tag scorer is the safety net that keeps the panel
+useful when an embedding adapter is mid-failure.
 
 Scoring weights are exported as module constants so they're trivially
 A/B-able from a future settings module without touching call sites.
@@ -27,14 +37,22 @@ A/B-able from a future settings module without touching call sites.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import get_settings
 from app.models.ingredient import RecipeIngredient
 from app.models.recipe import Recipe, RecipeStatus
 from app.models.user import User
+from app.services.recipe_embeddings import (
+    cosine_similarity,
+    ensure_recipe_embedding,
+)
+
+logger = logging.getLogger(__name__)
 
 # --- Scoring weights ---------------------------------------------------------
 #
@@ -154,6 +172,7 @@ def find_related_recipes(
     seed: Recipe,
     viewer: User,
     limit: int = DEFAULT_RELATED_LIMIT,
+    provider: str | None = None,
 ) -> list[RecipeRecommendation]:
     """Return up to ``limit`` recipes ranked by similarity to ``seed``.
 
@@ -168,6 +187,19 @@ def find_related_recipes(
       (admin-reviewed for public display).
     * The seed itself is always excluded.
 
+    Provider selection:
+
+    * ``provider`` argument wins when supplied (used by tests and the
+      admin A/B endpoint).
+    * Otherwise reads :attr:`Settings.recommendation_provider`.
+    * ``vector`` runs cosine similarity over stored embeddings; if the
+      seed has no embedding yet a one-shot lazy-backfill embeds it,
+      and candidates with a NULL embedding are quietly skipped. If
+      vector ranking yields zero matches we fall back to the tag
+      scorer transparently — the panel never appears empty just
+      because the embedding side hasn't caught up.
+    * ``tag`` always uses the categorical / Jaccard scorer.
+
     Candidates with a final score of ``0.0`` are dropped — there is no
     point surfacing a "related" recipe that shares nothing with the
     seed. Ties are broken by ``created_at DESC`` so freshly-generated
@@ -177,7 +209,35 @@ def find_related_recipes(
         return []
     limit = min(limit, MAX_RELATED_LIMIT)
 
-    query = (
+    resolved_provider = provider or get_settings().recommendation_provider
+
+    candidates = _load_eligible_candidates(db, seed=seed, viewer=viewer)
+
+    if resolved_provider == "vector":
+        scored = _score_with_vector(db, seed=seed, candidates=candidates)
+        if scored:
+            return _sort_and_trim(scored, limit=limit)
+        # No vector matches — either the seed lacks an embedding
+        # (lazy backfill failed) or every candidate is unembedded.
+        # Fall through to the tag scorer so the UI still gets results.
+
+    scored = _score_with_tags(seed=seed, candidates=candidates)
+    return _sort_and_trim(scored, limit=limit)
+
+
+def _load_eligible_candidates(
+    db: Session,
+    *,
+    seed: Recipe,
+    viewer: User,
+) -> list[Recipe]:
+    """All recipes the viewer is allowed to see, minus the seed.
+
+    Shared by both scoring paths so the visibility rules live in a
+    single place. ``joinedload`` keeps the per-candidate ingredient
+    fetch from going N+1 in the tag scorer.
+    """
+    return (
         db.query(Recipe)
         .options(joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient))
         .filter(Recipe.id != seed.id)
@@ -187,25 +247,74 @@ def find_related_recipes(
                 Recipe.status == RecipeStatus.APPROVED,
             )
         )
+        .all()
     )
 
-    # Materialise candidates once so we can score in pure Python — for
-    # the per-user O(N) corpus we expect at MVP scale this is faster
-    # than SQL-side weighted-sum SQL across portable backends (SQLite +
-    # Postgres) and keeps the scoring formula readable.
-    candidates = query.all()
 
+def _score_with_tags(
+    *,
+    seed: Recipe,
+    candidates: list[Recipe],
+) -> list[RecipeRecommendation]:
+    """Score every candidate with :func:`compute_similarity`.
+
+    Drops 0.0 scores so the UI never receives no-overlap noise.
+    """
     scored: list[RecipeRecommendation] = []
     for candidate in candidates:
         score = compute_similarity(seed, candidate)
         if score <= 0.0:
             continue
         scored.append(RecipeRecommendation(recipe=candidate, match_score=score))
+    return scored
 
+
+def _score_with_vector(
+    db: Session,
+    *,
+    seed: Recipe,
+    candidates: list[Recipe],
+) -> list[RecipeRecommendation]:
+    """Score every candidate via cosine similarity over stored embeddings.
+
+    The seed's embedding is lazily backfilled on first use so this
+    path stays usable for legacy rows that pre-date the feature. A
+    candidate without ``embedding_values`` is silently skipped — the
+    caller (``find_related_recipes``) detects the empty result and
+    falls through to the tag scorer.
+    """
+    seed_vector = ensure_recipe_embedding(db, seed)
+    if not seed_vector:
+        return []
+
+    scored: list[RecipeRecommendation] = []
+    for candidate in candidates:
+        candidate_vector = candidate.embedding_values
+        if not candidate_vector:
+            continue
+        score = cosine_similarity(seed_vector, candidate_vector)
+        if score <= 0.0:
+            continue
+        scored.append(RecipeRecommendation(recipe=candidate, match_score=score))
+    return scored
+
+
+def _sort_and_trim(
+    scored: list[RecipeRecommendation],
+    *,
+    limit: int,
+) -> list[RecipeRecommendation]:
+    """Stable ranking: score DESC, then ``created_at`` DESC, then id.
+
+    The id fallback keeps ordering deterministic when two recipes
+    were created in the same second — important for tests that batch-
+    create recipes via the seeded factory.
+    """
     scored.sort(
         key=lambda rec: (
             -rec.match_score,
             -(rec.recipe.created_at.timestamp() if rec.recipe.created_at else 0.0),
+            rec.recipe.id,
         )
     )
     return scored[:limit]

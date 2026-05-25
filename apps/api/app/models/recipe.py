@@ -56,6 +56,18 @@ class Recipe(Base, TimestampMixin):
     rating: Mapped[int] = mapped_column(Integer, default=0)
     is_selling: Mapped[bool] = mapped_column(default=False)
 
+    # Recipe embedding (todo §1.4 vector variant). Populated by
+    # :mod:`app.services.recipe_embeddings` on create + via the
+    # ``backfill_recipe_embeddings`` job. JSON-backed for portability
+    # (SQLite tests + Postgres prod both work off the same column);
+    # Postgres deployments additionally mirror the values into a
+    # ``vector(768)`` column with an HNSW cosine index — see
+    # ``0003_recipe_embedding`` migration. Stays nullable so back-
+    # catalogue recipes generated before the feature shipped don't
+    # break the related-recipes endpoint (the service falls back to
+    # the tag scorer in that case).
+    embedding_values: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+
     user = relationship("User", back_populates="recipes")
     ingredients = relationship(
         "RecipeIngredient", back_populates="recipe", cascade="all, delete-orphan"
