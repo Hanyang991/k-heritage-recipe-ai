@@ -100,12 +100,23 @@ pytest -v
 
 | Service   | Env var              | `mock` (default)              | `live`                                       |
 | --------- | -------------------- | ----------------------------- | -------------------------------------------- |
-| LLM       | `LLM_PROVIDER`       | Deterministic 3 candidates    | Gemini 2.5 Pro (requires `GEMINI_API_KEY`)   |
+| LLM       | `LLM_PROVIDER`       | Deterministic 3 candidates    | Gemini 2.5 Pro — spec §6.1/§6.2 (requires `GEMINI_API_KEY`)   |
 | Trends    | `TRENDS_PROVIDER`    | Deterministic ratios          | Naver DataLab (`NAVER_DATALAB_CLIENT_ID/SECRET`) |
-| Heritage  | `HERITAGE_PROVIDER`  | 3 seed documents (음식디미방 etc.) | 장서각 Open API (no key — public); 한국학자료포털 / 국립중앙도서관 / 국사편찬위원회 / 기호유학 still pending |
+| Heritage  | `HERITAGE_PROVIDER`  | 3 seed documents (음식디미방 etc.) | 장서각 + 한국학자료포털 + NLK + 기호유학 (and `multi` fan-in over them) wired; 국사편찬위 deferred |
 | Payments  | `PAYMENTS_PROVIDER`  | Always succeeds, fake billing | TossPayments (`TOSS_SECRET_KEY` required)    |
 
-Live adapters for LLM / payments are scaffolded but raise `NotImplementedError` until wired — switching is a single env var change once keys are provided. The trends adapter is fully wired live; the heritage adapter is fully wired against 장서각 and four additional 한국 고문헌 / 역사 / 전통문화 open APIs are queued (한국학자료포털, 국립중앙도서관, 국사편찬위원회, 기호유학 고문헌 통합정보시스템 — see todo.md §1.3.1).
+The live LLM adapter (this PR) and the four heritage adapters are fully wired — switching is a single env var change once `GEMINI_API_KEY` is provided. The trends adapter is fully wired live. Live payments are still a scaffold (`NotImplementedError`) pending TossPayments key + merchant registration.
+
+### LLM live mode (`LLM_PROVIDER=live`)
+
+`GeminiLLMAdapter` calls `generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` with `httpx` directly (no `google-generativeai` SDK — same call shape as the trend-LLM expansion provider in PR #14). Spec §6 parameters are baked into the defaults:
+
+* **`generate_recipes`** (§6.2) — `temperature=0.7`, `maxOutputTokens=4000`, `responseSchema` enforcing the full `GeneratedRecipe` shape (name / description / region / era / diet / menu_type / keyword / difficulty / time_minutes / servings / estimated_cost_krw / estimated_price_krw / ingredients[] / steps[] / sns_caption / source_attribution all required — satisfies the §6.2.1 Step 3 "필수 필드 누락률 0%" target).
+* **`translate_classical`** (§6.1) — `temperature=0.1`, `maxOutputTokens=2000`, `responseSchema` returning `{"modern_korean": "..."}` so the translation output is structured rather than free-form text (consistent with the §6.1 rule: "JSON 형식으로만 응답하고 다른 텍스트는 일체 포함하지 않습니다").
+
+Every failure mode (non-200 status, transport errors, unparseable JSON, schema violations, safety-blocked prompts) escalates to `MockLLMAdapter` so recipe-generate stays available during transient Gemini outages — the same resilience contract as the heritage adapters. The factory also degrades to mock when `LLM_PROVIDER=live` is set but `GEMINI_API_KEY` is unset, with a startup warning, so operators can provision the key later without redeploying.
+
+Overrides (all optional, see `.env.example`): `GEMINI_MODEL`, `GEMINI_BASE_URL`, `GEMINI_REQUEST_TIMEOUT_SECONDS`, `GEMINI_RECIPE_MAX_TOKENS`, `GEMINI_TRANSLATE_MAX_TOKENS`, `GEMINI_RECIPE_TEMPERATURE`, `GEMINI_TRANSLATE_TEMPERATURE`. The `?key=...` URL param is scrubbed from `httpx` access logs by `install_httpx_key_redaction` (idempotent, shared with the trend-LLM path).
 
 ### Heritage live adapter (PR #33)
 
