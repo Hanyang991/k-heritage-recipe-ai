@@ -60,6 +60,17 @@ class Settings(BaseSettings):
     trends_refresh_hour_utc: int = 18
 
     gemini_api_key: str = ""
+    # Gemini live LLM adapter (spec §6). Defaults match the spec literally
+    # (``gemini-2.5-pro``, max tokens 4000 / 2000, temperatures 0.7 / 0.1).
+    # The base URL + timeout are overridable for staging mirrors and for
+    # tests that point at a recorded fixture server.
+    gemini_model: str = "gemini-2.5-pro"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com"
+    gemini_request_timeout_seconds: float = 30.0
+    gemini_recipe_max_tokens: int = 4000
+    gemini_translate_max_tokens: int = 2000
+    gemini_recipe_temperature: float = 0.7
+    gemini_translate_temperature: float = 0.1
     # 장서각 Digital Archive Open API: https://jsg.aks.ac.kr/api/help
     # The live endpoint is fully open (no API key required), so the key
     # field stays for forward-compatibility only — the active live mode
