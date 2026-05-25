@@ -96,6 +96,58 @@ pytest -v
 
 13 happy-path + edge-case tests covering auth, trends, recipe generate / list / detail / delete / PDF / certificate / quota enforcement / admin queue.
 
+## Database migrations — Alembic
+
+Schema changes are tracked with [Alembic](https://alembic.sqlalchemy.org). The
+revision graph lives in `apps/api/alembic/versions/`:
+
+| Revision                       | Description                                                                   |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `0001_baseline`                | Captures the full ORM schema accumulated up to (but not including) pgvector.  |
+| `0002_pgvector_native_knn`     | Postgres-only: installs the `vector` extension, adds `embedding vector(768)` to `vector_search_datapoints`, creates the HNSW cosine ANN index for the native KNN fast path. |
+
+### Fresh database
+
+```bash
+cd apps/api
+alembic upgrade head
+```
+
+Both migrations apply cleanly. The pgvector migration is a no-op on SQLite (the
+test stack) so the same `head` revision works across all backends.
+
+### Existing database (previously bootstrapped via `Base.metadata.create_all()`)
+
+Tables already exist, so the baseline must be **stamped** rather than applied:
+
+```bash
+cd apps/api
+alembic stamp 0001_baseline  # mark baseline as already applied
+alembic upgrade head          # apply 0002_pgvector_native_knn on top
+```
+
+Then run the one-off backfill to convert existing JSON `values` into the
+native `vector(768)` column so the HNSW index covers the whole corpus:
+
+```bash
+python -m app.jobs.backfill_pgvector_embedding             # all namespaces
+python -m app.jobs.backfill_pgvector_embedding --namespace jangseogak  # scoped
+```
+
+The backfill is idempotent (`WHERE embedding IS NULL`) and operates in pure
+SQL — 1M rows ~100s. From here on the `PgVectorSearchAdapter.upsert` path
+populates the `embedding` column on every write so the backfill only needs
+to run once.
+
+### docker-compose
+
+The compose stack uses `pgvector/pgvector:pg16` for Postgres and runs
+`alembic upgrade head` in the API container's startup command, so the native
+KNN path is available out-of-the-box for local dev. Set
+`PGVECTOR_NATIVE_KNN=false` in `apps/api/.env` to disable the fast path for
+A/B benchmarking — the adapter falls back to the Python brute-force scan
+without further config.
+
 ## Service modes
 
 | Service   | Env var              | `mock` (default)              | `live`                                       |
@@ -158,7 +210,7 @@ Semantic retrieval over the heritage corpus uses **one logical index per source*
 **Free production rollout (recommended).** Pair `EMBEDDING_PROVIDER=gemini` with `VECTOR_SEARCH_PROVIDER=pgvector` to ship hybrid retrieval at **$0 marginal cost** — both reuse infrastructure the project already provisions:
 
 - **Embeddings** — `GeminiEmbeddingAdapter` reuses the same `GEMINI_API_KEY` that powers the LLM adapter (PR #39). Google AI Studio's free tier covers ~1500 requests/day at ~100 req/min, comfortably above the periodic-batch indexing cadence at this project's heritage-corpus scale. Failures degrade to the mock embedder so a transient rate-limit or outage never bombs the whole indexing run.
-- **Vector index** — `PgVectorSearchAdapter` persists vectors as JSON `list[float]` in the existing Postgres `vector_search_datapoints` table. Query-time ranking is pure-Python cosine similarity, which stays under ~50ms cold-cache up to ~1M vectors (well above the project's near-term ceiling). When the corpus grows past that, a follow-up migration can layer the `pgvector` extension's `vector(N)` column + IVFFlat / HNSW index on top of the same table — no adapter API change required.
+- **Vector index** — `PgVectorSearchAdapter` persists vectors as JSON `list[float]` in the existing Postgres `vector_search_datapoints` table. Query-time ranking auto-selects between two backends at runtime: when the connected DB is Postgres + the `pgvector` extension is installed + the `0002_pgvector_native_knn` migration has run (see [Migrations](#database-migrations--alembic) below), it delegates ranking to pgvector via `ORDER BY embedding <=> :v` against an HNSW cosine index — `O(log N)` latency, ~5ms per query at the project's near-term 1M-vector ceiling. Otherwise it falls back to a pure-Python cosine brute-force scan over the JSON `values` column — `O(N)`, stays under ~50ms cold-cache up to ~1M vectors. Both paths share identical scoring, restrict semantics, and tie-breaking so callers can't tell which one served their query.
 
 This combination keeps the Vertex AI adapter code intact (PR #40) so paid migration later is a pure env-var flip.
 

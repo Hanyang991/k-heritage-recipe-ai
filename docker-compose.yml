@@ -2,7 +2,13 @@ version: "3.9"
 
 services:
   db:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 = Postgres 16 + pgvector extension preinstalled.
+    # The plain postgres:16-alpine image works for everything except the
+    # ``CREATE EXTENSION vector`` step in alembic migration
+    # ``0002_pgvector_native_knn`` — switching here keeps local-dev /
+    # docker-compose deployments capable of running the full migration
+    # head without manual extension setup.
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: kheritage
@@ -42,8 +48,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # ``alembic upgrade head`` installs the pgvector extension + adds
+    # the ``vector(768)`` column / HNSW index on top of the baseline
+    # schema (versions/0001_baseline + 0002_pgvector_native_knn).
+    # ``seed`` then loads sample documents / users / trends on top of
+    # the migrated schema. Both commands are idempotent — they only
+    # touch missing rows / unapplied revisions, so the container can be
+    # restarted without resetting data.
     command: >
-      sh -c "python -m app.db.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "alembic upgrade head && python -m app.db.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   # Daily scheduler that re-runs the trend discovery pipeline once per day
   # (default 18 UTC = 03 KST). Operators with their own scheduler (k8s

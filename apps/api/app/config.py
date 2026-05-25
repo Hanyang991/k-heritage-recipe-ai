@@ -141,6 +141,14 @@ class Settings(BaseSettings):
     #                  ``VERTEX_VECTOR_INDEX_*`` env vars per source.
     # See ``app/services/vector_search/__init__.py``.
     vector_search_provider: Literal["mock", "pgvector", "live"] = "mock"
+    # Toggle the pgvector adapter's native ``ORDER BY embedding <=> :v``
+    # fast path. Defaults to ``True`` — the adapter probes the connected
+    # database for the ``vector`` extension + ``embedding`` column at
+    # runtime, so a missing migration or pre-Postgres-16 deployment
+    # automatically falls back to the Python brute-force scan without
+    # operator intervention. Flip to ``False`` for A/B benchmarking or
+    # to isolate a recall regression.
+    pgvector_native_knn: bool = True
     vertex_project_id: str = ""
     vertex_location: str = "us-central1"
     vertex_embedding_model: str = "text-embedding-005"
