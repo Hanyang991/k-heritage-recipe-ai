@@ -143,6 +143,7 @@ def get_vector_search_adapter() -> VectorSearchAdapter:
         return PgVectorSearchAdapter(
             session_factory=SessionLocal,
             namespaces=namespaces,
+            native_knn=settings.pgvector_native_knn,
         )
 
     if not settings.vertex_project_id:

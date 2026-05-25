@@ -381,3 +381,82 @@ def test_factory_returns_pgvector_when_configured(monkeypatch) -> None:
         get_settings.cache_clear()
         get_vector_search_adapter.cache_clear()
     assert isinstance(adapter, PgVectorSearchAdapter)
+
+
+# ---------------------------------------------------------------------------
+# Native KNN backend selection
+# ---------------------------------------------------------------------------
+
+
+def test_should_use_native_knn_returns_false_on_sqlite(session_factory) -> None:
+    """SQLite is the test default — the adapter must never try to run
+    pgvector-specific SQL against it.
+    """
+    a = PgVectorSearchAdapter(
+        session_factory=session_factory,
+        namespaces=["jangseogak"],
+    )
+    session = session_factory()
+    try:
+        assert a._should_use_native_knn(session) is False
+    finally:
+        session.close()
+
+
+def test_should_use_native_knn_returns_false_when_disabled(session_factory) -> None:
+    """``native_knn=False`` short-circuits the probe regardless of dialect."""
+    a = PgVectorSearchAdapter(
+        session_factory=session_factory,
+        namespaces=["jangseogak"],
+        native_knn=False,
+    )
+    session = session_factory()
+    try:
+        assert a._should_use_native_knn(session) is False
+    finally:
+        session.close()
+
+
+def test_query_on_sqlite_uses_python_path_unchanged(session_factory) -> None:
+    """End-to-end smoke test: with the default ``native_knn=True`` on
+    SQLite the adapter falls back to the Python brute-force path and
+    produces identical results to the pre-pgvector-PR behaviour.
+    """
+    a = PgVectorSearchAdapter(
+        session_factory=session_factory,
+        namespaces=["jangseogak"],
+    )
+    a.upsert(
+        "jangseogak",
+        [
+            _dp("jsg:1", _unit([1.0, 0.0])),
+            _dp("jsg:2", _unit([0.9, 0.1])),
+            _dp("jsg:3", _unit([0.0, 1.0])),
+        ],
+    )
+    out = a.query("jangseogak", _unit([1.0, 0.0]), top_k=3)
+    assert [m.datapoint_id for m in out] == ["jsg:1", "jsg:2", "jsg:3"]
+    # Native fast path was never engaged on SQLite — the cache stays
+    # ``None`` (we never even probed because the dialect check failed
+    # first).
+    assert a._pgvector_ready is None
+
+
+def test_factory_passes_native_knn_setting(monkeypatch) -> None:
+    """``settings.pgvector_native_knn=False`` flows through the factory
+    into the adapter so operators can disable the fast path without
+    changing code.
+    """
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    get_vector_search_adapter.cache_clear()
+    monkeypatch.setenv("VECTOR_SEARCH_PROVIDER", "pgvector")
+    monkeypatch.setenv("PGVECTOR_NATIVE_KNN", "false")
+    try:
+        adapter = get_vector_search_adapter()
+    finally:
+        get_settings.cache_clear()
+        get_vector_search_adapter.cache_clear()
+    assert isinstance(adapter, PgVectorSearchAdapter)
+    assert adapter._native_knn_enabled is False
