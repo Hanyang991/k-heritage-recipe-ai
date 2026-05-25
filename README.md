@@ -188,7 +188,47 @@ Blend score = `keyword_weight × keyword_score + (1 - keyword_weight) × semanti
 
 Resilience contract mirrors `MultiSourceHeritageAdapter`: either layer failing in isolation is logged + skipped (the surviving layer's results still flow through); only an all-layers-fail event falls back to the keyword adapter's mock contract. `VectorIndexNotConfiguredError` is treated as an operator-visible config bug (namespace mismatch between the indexer and the vector store) and propagates loudly rather than being silently swallowed.
 
-Index population is **not** the hybrid adapter's responsibility. When the vector store is mock or empty, the semantic side contributes nothing and the hybrid adapter degenerates to keyword-only — `recipe-generate` keeps working with no extra credentials. The operational follow-up is a batch backfill job that crawls each source's corpus once and upserts via `HeritageIndexer.index_documents` (tracked separately in `todo.md` §1.3 follow-ups).
+Index population is **not** the hybrid adapter's responsibility — see the next section for the backfill job that seeds the vector store. When the vector store is mock or empty, the semantic side contributes nothing and the hybrid adapter degenerates to keyword-only — `recipe-generate` keeps working with no extra credentials.
+
+### Activating hybrid retrieval — env + backfill sequence
+
+After deploying with the free-tier stack (`EMBEDDING_PROVIDER=gemini` + `VECTOR_SEARCH_PROVIDER=pgvector`, see [Vector search](#vector-search--per-source-namespace-indexing) above), three steps are needed to actually turn on hybrid retrieval end-to-end. None of them require new credentials beyond the existing `GEMINI_API_KEY`.
+
+1. **Set the env vars.** All four are required together — flipping `HERITAGE_RETRIEVAL_MODE` without populating the vector store just leaves recipe-generate in keyword-only mode silently.
+   ```
+   HERITAGE_RETRIEVAL_MODE=hybrid
+   HERITAGE_PROVIDER=live
+   HERITAGE_LIVE_SOURCE=multi             # fan-in across all keyword sources
+   EMBEDDING_PROVIDER=gemini
+   VECTOR_SEARCH_PROVIDER=pgvector
+   ```
+
+2. **Run the first backfill.** The keyword heritage sources are all *search* APIs (no bulk-listing endpoint), so the backfill is driven by a curated seed-query pool — Korean food / ritual terms (음식 / 의궤 / 떡 / 죽 / 김치 / 농서 / 잔치 / 제사 / …) configurable via `HERITAGE_BACKFILL_QUERIES`. The runner walks each query through the keyword adapter, deduplicates the collected docs by `(institution, external_id)`, and feeds them to `HeritageIndexer.index_documents` in chunks of `HERITAGE_BACKFILL_BATCH_SIZE` (default 50, capped by Gemini's free-tier batch limit).
+
+   Drive the backfill either way:
+   ```
+   # ad-hoc CLI
+   python -m app.jobs.backfill_heritage_index
+
+   # admin-triggered (blocks until done, returns the same JSON report)
+   curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+       https://api.example.com/v1/admin/heritage/index/backfill
+   ```
+   Both paths print / return per-source stats:
+   ```json
+   {
+     "queries_attempted": 24, "queries_succeeded": 24,
+     "unique_docs_collected": 412,
+     "docs_per_source": { "jangseogak": 187, "koreanstudies": 134, "gihohak": 91 },
+     "upserted_per_namespace": { "jangseogak": 187, "koreanstudies": 134, "gihohak": 91 },
+     "errored_per_namespace": {}, "skipped_unknown_namespace": {},
+     "total_upserted": 412
+   }
+   ```
+
+3. **Re-run on schedule.** The backfill is idempotent — upserts are keyed by `(namespace, datapoint_id)` so re-running with the same seed pool refreshes the vector store in place without duplicating rows. A weekly cron / scheduler hitting the admin endpoint is the recommended cadence: it picks up new archival records and absorbs any drift in `EMBEDDING_PROVIDER` (e.g. swapping to a new Gemini model later).
+
+The backfill uses `get_keyword_heritage_adapter()` rather than `get_heritage_adapter()` — the latter would recurse through the hybrid wrapper, where the semantic side has nothing useful to return on a still-empty index. Per-query failures (transport blips, rate limits) are caught + recorded so a single slow source can't abort the whole walk. Per-namespace upsert errors are surfaced in `errored_per_namespace` so operators can re-run a single source by narrowing `HERITAGE_BACKFILL_QUERIES`.
 
 ### Trend discovery pipeline
 

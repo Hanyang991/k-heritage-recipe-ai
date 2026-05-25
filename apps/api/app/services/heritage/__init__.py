@@ -70,6 +70,18 @@ def get_heritage_adapter() -> HeritageAdapter:
     return _wrap_hybrid(base, settings)
 
 
+def get_keyword_heritage_adapter() -> HeritageAdapter:
+    """Return the *keyword-only* heritage adapter, bypassing the hybrid wrap.
+
+    Backfill / indexing jobs use this so the semantic side of hybrid
+    retrieval (which depends on the vector index being populated) does
+    not recurse during the population step. Same provider routing as
+    :func:`get_heritage_adapter`, minus the
+    :class:`HybridHeritageAdapter` wrapper.
+    """
+    return _build_keyword_adapter(get_settings())
+
+
 def _build_keyword_adapter(settings: Settings) -> HeritageAdapter:
     """Return the keyword (non-hybrid) heritage adapter for ``settings``."""
     if settings.heritage_provider != "live":
@@ -227,4 +239,5 @@ __all__ = [
     "MockHeritageAdapter",
     "MultiSourceHeritageAdapter",
     "get_heritage_adapter",
+    "get_keyword_heritage_adapter",
 ]
