@@ -34,9 +34,13 @@ class Settings(BaseSettings):
     # factory degrades to the mock matcher even when ``HERITAGE_PROVIDER=live``.
     # ``gihohak`` uses the 기호유학 고문헌 통합정보시스템 (giho.cnu.ac.kr)
     # Open API operated by 충남대 — fully open, no key required (same as
-    # 장서각 / 한국학자료포털). See todo.md §1.3.1 for the broader source
-    # roadmap.
-    heritage_live_source: Literal["jangseogak", "koreanstudies", "nlk", "gihohak"] = "jangseogak"
+    # 장서각 / 한국학자료포털).
+    # ``multi`` fan-ins across multiple sources at once — the participating
+    # sources are listed in ``HERITAGE_MULTI_SOURCES`` (comma-separated).
+    # See todo.md §1.3.1 for the broader source roadmap.
+    heritage_live_source: Literal["jangseogak", "koreanstudies", "nlk", "gihohak", "multi"] = (
+        "jangseogak"
+    )
     payments_provider: Literal["mock", "live"] = "mock"
     trends_provider: Literal["mock", "live"] = "mock"
     trends_discovery_source: Literal["curated", "shopping_insight", "open"] = "curated"
@@ -80,6 +84,15 @@ class Settings(BaseSettings):
     # upstream TLS chain has historically been incomplete; operators can
     # override to HTTPS if/when CNU rolls out a valid cert.
     gihohak_base_url: str = "http://giho.cnu.ac.kr"
+    # Comma-separated list of source names used by
+    # ``MultiSourceHeritageAdapter`` when ``HERITAGE_LIVE_SOURCE=multi``.
+    # Allowed values: ``jangseogak``, ``koreanstudies``, ``nlk``,
+    # ``gihohak``. Unknown / unauthenticated sources (e.g. ``nlk`` without
+    # ``NLK_API_KEY``) are silently skipped at boot — the multi-adapter
+    # only refuses to start when **zero** sources remain after filtering.
+    # ``nlk`` is omitted from the default so the multi pipeline boots
+    # without a key; add it once ``NLK_API_KEY`` is provisioned.
+    heritage_multi_sources: str = "jangseogak,koreanstudies,gihohak"
     nfm_api_key: str = ""
     culture_api_key: str = ""
     toss_secret_key: str = ""
@@ -97,6 +110,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
+
+    @property
+    def heritage_multi_sources_list(self) -> list[str]:
+        return [s.strip() for s in self.heritage_multi_sources.split(",") if s.strip()]
 
 
 @lru_cache

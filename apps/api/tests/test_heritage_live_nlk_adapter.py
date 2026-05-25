@@ -354,4 +354,5 @@ def test_factory_unknown_live_source_value_falls_through_to_jangseogak() -> None
         "koreanstudies",
         "nlk",
         "gihohak",
+        "multi",
     }

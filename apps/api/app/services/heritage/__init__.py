@@ -13,16 +13,20 @@ adapter routes through:
   failing recipe-generate at boot.
 * ``gihohak`` — 기호유학 고문헌 통합정보시스템 (giho.cnu.ac.kr,
   충남대, PR #37). Fully open (no API key required) like 장서각 and
-  한국학자료포털. Adds 충청권 고서/고문서/금석문 + 인물 네트워크
-  coverage that the other three lack.
+  한국학자료포털.
+* ``multi`` — :class:`MultiSourceHeritageAdapter` fan-in across the
+  sources listed in ``HERITAGE_MULTI_SOURCES``
+  (default ``jangseogak,koreanstudies,gihohak``). NLK is opt-in here
+  because it requires a key; missing-key sources are silently dropped.
 
 See todo.md §1.3.1 for the broader source roadmap; 국사편찬위
 (`nihc`) remains the final outstanding source.
 """
 
+import logging
 from functools import lru_cache
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.services.heritage.base import HeritageAdapter
 from app.services.heritage.gihohak import GihohakSearchClient
 from app.services.heritage.jangseogak import JangseogakSearchClient
@@ -32,7 +36,10 @@ from app.services.heritage.live_gihohak import LiveGihohakAdapter
 from app.services.heritage.live_koreanstudies import LiveKoreanstudiesAdapter
 from app.services.heritage.live_nlk import LiveNlkAdapter
 from app.services.heritage.mock import MockHeritageAdapter
+from app.services.heritage.multi_source import HeritageSource, MultiSourceHeritageAdapter
 from app.services.heritage.nlk import NlkSearchClient
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache
@@ -64,6 +71,9 @@ def get_heritage_adapter() -> HeritageAdapter:
         gihohak_client = GihohakSearchClient(base_url=settings.gihohak_base_url)
         return LiveGihohakAdapter(client=gihohak_client)
 
+    if settings.heritage_live_source == "multi":
+        return _build_multi_source_adapter(settings)
+
     # Default branch: jangseogak. Keep this as the explicit fallback so
     # any future un-handled Literal value loudly degrades to the most
     # battle-tested adapter rather than silently breaking recipe-generate.
@@ -71,12 +81,89 @@ def get_heritage_adapter() -> HeritageAdapter:
     return LiveHeritageAdapter(client=client)
 
 
+def _build_multi_source_adapter(settings: Settings) -> HeritageAdapter:
+    """Build a :class:`MultiSourceHeritageAdapter` from the configured source list.
+
+    Sources requiring credentials that aren't provisioned (currently only
+    NLK) are silently skipped with a warning rather than failing boot —
+    same graceful-degrade contract as the single-source ``nlk`` branch.
+    Unknown source names are likewise skipped + warned. If every requested
+    source is filtered out, we fall back to :class:`MockHeritageAdapter`
+    so recipe-generate stays available.
+    """
+    requested = settings.heritage_multi_sources_list
+    sources: list[HeritageSource] = []
+    for name in requested:
+        if name == "jangseogak":
+            sources.append(
+                HeritageSource(
+                    "jangseogak",
+                    LiveHeritageAdapter(
+                        client=JangseogakSearchClient(base_url=settings.jangseogak_base_url)
+                    ),
+                )
+            )
+        elif name == "koreanstudies":
+            sources.append(
+                HeritageSource(
+                    "koreanstudies",
+                    LiveKoreanstudiesAdapter(
+                        client=KoreanstudiesSearchClient(base_url=settings.koreanstudies_base_url)
+                    ),
+                )
+            )
+        elif name == "nlk":
+            if not settings.nlk_api_key:
+                logger.warning(
+                    "multi-source heritage: %r requested but NLK_API_KEY is unset; skipping",
+                    name,
+                )
+                continue
+            sources.append(
+                HeritageSource(
+                    "nlk",
+                    LiveNlkAdapter(
+                        client=NlkSearchClient(
+                            api_key=settings.nlk_api_key,
+                            base_url=settings.nlk_base_url,
+                        )
+                    ),
+                )
+            )
+        elif name == "gihohak":
+            sources.append(
+                HeritageSource(
+                    "gihohak",
+                    LiveGihohakAdapter(
+                        client=GihohakSearchClient(base_url=settings.gihohak_base_url)
+                    ),
+                )
+            )
+        else:
+            logger.warning(
+                "multi-source heritage: unknown source %r in HERITAGE_MULTI_SOURCES; skipping",
+                name,
+            )
+
+    if not sources:
+        logger.warning(
+            "multi-source heritage: no valid sources configured "
+            "(HERITAGE_MULTI_SOURCES=%r); falling back to mock",
+            settings.heritage_multi_sources,
+        )
+        return MockHeritageAdapter()
+
+    return MultiSourceHeritageAdapter(sources=sources)
+
+
 __all__ = [
     "HeritageAdapter",
+    "HeritageSource",
     "LiveGihohakAdapter",
     "LiveHeritageAdapter",
     "LiveKoreanstudiesAdapter",
     "LiveNlkAdapter",
     "MockHeritageAdapter",
+    "MultiSourceHeritageAdapter",
     "get_heritage_adapter",
 ]
