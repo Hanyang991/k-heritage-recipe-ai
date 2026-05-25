@@ -128,6 +128,16 @@ def heritage_doc_metadata(doc: HeritageDoc) -> dict[str, str]:
     server side — production would store this in a side-table keyed by
     ``datapoint_id`` (out of scope for this PR; see todo.md §1.3.1).
     The mock provider keeps it in memory so tests can assert on it.
+
+    The field set is the **minimum required to reconstruct a
+    :class:`HeritageDoc` for hybrid retrieval** (see
+    :func:`vector_match_to_heritage_doc`) — title / institution /
+    region / period / category / year / summary / license — so the
+    same dataclass the keyword adapter returns can also be assembled
+    from a pure semantic hit.  ``original_text`` is intentionally
+    omitted: it can be multi-kB and isn't surfaced in the
+    recipe-generate API response or LLM prompt; semantic hits leave
+    that field empty.
     """
     md: dict[str, str] = {
         "title": doc.title,
@@ -140,7 +150,63 @@ def heritage_doc_metadata(doc: HeritageDoc) -> dict[str, str]:
         md["period"] = doc.period
     if doc.region:
         md["region"] = doc.region
+    if doc.category:
+        md["category"] = doc.category
+    if doc.summary:
+        md["summary"] = doc.summary
     return md
+
+
+def vector_match_to_heritage_doc(namespace: str, match: VectorMatch) -> HeritageDoc:
+    """Reconstruct a :class:`HeritageDoc` from a semantic :class:`VectorMatch`.
+
+    The datapoint id is canonically ``"{institution}:{external_id}"``
+    (see :func:`heritage_doc_id`) so the institution + external_id can
+    be recovered without consulting any side-table.  The remaining
+    fields come from the metadata blob written at upsert time by
+    :func:`heritage_doc_metadata`.
+
+    ``original_text`` is left empty by design — the LLM prompt
+    grounding only uses the summary / metadata fields, and the
+    recipe-generate API response doesn't surface raw text either, so
+    omitting the multi-kB original blob from the metadata side table
+    is a substantial size win that costs nothing observable
+    downstream.
+
+    ``namespace`` is the source key the match was emitted from — for
+    the well-known sources this equals ``institution``, but we still
+    pass it explicitly because future namespaces (per-collection
+    indexes within one institution) may diverge.  When the metadata
+    omits ``institution`` we fall back to ``namespace`` so the
+    reconstructed doc still carries the right KOGL attribution.
+    """
+    md = match.metadata
+    # Datapoint id format: "{institution}:{external_id}" — split on the
+    # first colon so external ids that themselves contain colons (e.g.
+    # archive shelf marks) round-trip intact.
+    dp_id = match.datapoint_id
+    if ":" in dp_id:
+        _, external_id = dp_id.split(":", 1)
+    else:
+        external_id = dp_id
+    year_str = md.get("year", "")
+    year: int | None
+    try:
+        year = int(year_str) if year_str else None
+    except ValueError:
+        year = None
+    return HeritageDoc(
+        external_id=external_id,
+        title=md.get("title", ""),
+        institution=md.get("institution") or namespace,
+        region=md.get("region", ""),
+        period=md.get("period", ""),
+        category=md.get("category", ""),
+        year=year,
+        original_text="",
+        summary=md.get("summary", ""),
+        license=md.get("license", "KOGL-1"),
+    )
 
 
 class HeritageIndexer:

@@ -29,6 +29,7 @@ from functools import lru_cache
 from app.config import Settings, get_settings
 from app.services.heritage.base import HeritageAdapter
 from app.services.heritage.gihohak import GihohakSearchClient
+from app.services.heritage.hybrid import HybridHeritageAdapter
 from app.services.heritage.jangseogak import JangseogakSearchClient
 from app.services.heritage.koreanstudies import KoreanstudiesSearchClient
 from app.services.heritage.live import LiveHeritageAdapter
@@ -44,7 +45,33 @@ logger = logging.getLogger(__name__)
 
 @lru_cache
 def get_heritage_adapter() -> HeritageAdapter:
+    """Build the heritage adapter chain.
+
+    Two orthogonal axes select what comes out:
+
+    * ``heritage_provider`` (``mock`` | ``live``) — picks the
+      *keyword* layer. ``mock`` is the seeded ``MockHeritageAdapter``
+      used in tests / local dev; ``live`` routes through one of the
+      four open-API single-source adapters or
+      :class:`MultiSourceHeritageAdapter` over a fan-in subset.
+    * ``heritage_retrieval_mode`` (``keyword`` | ``hybrid``) — wraps
+      the keyword layer with :class:`HybridHeritageAdapter` when set
+      to ``hybrid``. The hybrid layer also runs
+      :meth:`HeritageIndexer.query_all_sources` and blends both
+      layers' results. Requires no extra credentials beyond what the
+      keyword layer already needs — if the vector store is mock or
+      empty the semantic side contributes nothing and behaviour
+      collapses to keyword-only.
+    """
     settings = get_settings()
+    base = _build_keyword_adapter(settings)
+    if settings.heritage_retrieval_mode != "hybrid":
+        return base
+    return _wrap_hybrid(base, settings)
+
+
+def _build_keyword_adapter(settings: Settings) -> HeritageAdapter:
+    """Return the keyword (non-hybrid) heritage adapter for ``settings``."""
     if settings.heritage_provider != "live":
         return MockHeritageAdapter()
 
@@ -156,9 +183,43 @@ def _build_multi_source_adapter(settings: Settings) -> HeritageAdapter:
     return MultiSourceHeritageAdapter(sources=sources)
 
 
+def _wrap_hybrid(base: HeritageAdapter, settings: Settings) -> HeritageAdapter:
+    """Wrap ``base`` with :class:`HybridHeritageAdapter` when hybrid mode is on.
+
+    Imports the vector_search factory locally to keep the import graph
+    flat: :mod:`app.services.heritage` is imported very early during
+    FastAPI route registration, and vector_search transitively imports
+    httpx + the Vertex modules. Local import lets ``keyword`` mode
+    skip that cost entirely.
+    """
+    from app.services.embeddings import get_embedding_adapter
+    from app.services.vector_search import (
+        HeritageIndexer,
+        get_vector_search_adapter,
+    )
+
+    indexer = HeritageIndexer(
+        embedder=get_embedding_adapter(),
+        vector_store=get_vector_search_adapter(),
+    )
+    logger.info(
+        "heritage hybrid retrieval enabled (keyword_weight=%.2f, semantic_top_k=%d, namespaces=%r)",
+        settings.heritage_hybrid_keyword_weight,
+        settings.heritage_hybrid_semantic_top_k,
+        indexer.allowed_namespaces,
+    )
+    return HybridHeritageAdapter(
+        keyword_adapter=base,
+        indexer=indexer,
+        keyword_weight=settings.heritage_hybrid_keyword_weight,
+        semantic_top_k=settings.heritage_hybrid_semantic_top_k,
+    )
+
+
 __all__ = [
     "HeritageAdapter",
     "HeritageSource",
+    "HybridHeritageAdapter",
     "LiveGihohakAdapter",
     "LiveHeritageAdapter",
     "LiveKoreanstudiesAdapter",

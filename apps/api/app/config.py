@@ -139,6 +139,29 @@ class Settings(BaseSettings):
     # the heritage roadmap in ``todo.md`` §1.3.1.
     vertex_vector_namespaces: str = "jangseogak,koreanstudies,nlk,gihohak,nihc"
 
+    # ------------------------------------------------------------------
+    # Recipe-generate heritage retrieval mode
+    # ------------------------------------------------------------------
+    # ``keyword`` (default) — call the keyword heritage adapter only
+    # (existing behaviour, byte-identical to pre-hybrid code paths).
+    # ``hybrid`` — wrap the keyword adapter with
+    # :class:`HybridHeritageAdapter`, which also queries
+    # :class:`HeritageIndexer.query_all_sources` and blends both
+    # layers' results. Requires no extra credentials: if the vector
+    # store is mock or empty the semantic side simply contributes
+    # nothing and recipe-generate keeps working.
+    heritage_retrieval_mode: Literal["keyword", "hybrid"] = "keyword"
+    # Blend weight for hybrid retrieval — keyword side. The semantic
+    # side gets ``1 - heritage_hybrid_keyword_weight``. 0.6 gives
+    # keyword precision the edge by default while keeping semantic
+    # recall in play. Must be in [0, 1].
+    heritage_hybrid_keyword_weight: float = 0.6
+    # How many neighbours to ask the semantic side for. The hybrid
+    # adapter eventually trims to the caller's ``limit``, but pulls
+    # more from the index so weak semantic-only candidates still get
+    # a chance against strong keyword hits after blending.
+    heritage_hybrid_semantic_top_k: int = 20
+
     free_plan_monthly_recipe_quota: int = 3
     free_plan_hourly_rate_limit: int = 10
 
