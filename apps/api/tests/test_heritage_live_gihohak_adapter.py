@@ -387,7 +387,7 @@ def test_factory_honours_gihohak_base_url_override(
 
 
 def test_factory_literal_invariant_covers_four_sources() -> None:
-    """Sanity check: the Literal type guards env input — all four sources allowed."""
+    """Sanity check: the Literal type guards env input — all five values allowed."""
     from app.config import get_settings
 
     _reset_caches()
@@ -397,4 +397,5 @@ def test_factory_literal_invariant_covers_four_sources() -> None:
         "koreanstudies",
         "nlk",
         "gihohak",
+        "multi",
     }
